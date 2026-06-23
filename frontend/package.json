@@ -1,0 +1,44 @@
+{
+  "name": "tauri-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-log": "^2.8.0",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-sql": "^2.4.0",
+    "i18next": "^26.3.1",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "lucide-react": "^1.21.0",
+    "react": "^19.1.0",
+    "react-barcode": "^1.6.1",
+    "react-dom": "^19.1.0",
+    "react-hot-toast": "^2.6.0",
+    "react-i18next": "^17.0.8",
+    "react-router-dom": "^7.18.0",
+    "react-to-print": "^3.3.0",
+    "recharts": "^3.8.1",
+    "sweetalert2": "^11.26.25",
+    "sweetalert2-react-content": "^5.1.2",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "tailwindcss": "^4.3.1",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}
