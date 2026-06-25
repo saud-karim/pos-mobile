@@ -5,6 +5,8 @@ export interface DashboardStats {
   activeMaintenance: number;
   todayTransfersComm: number;
   lowStockCount: number;
+  totalSalesAllTime: number;
+  totalProfitAllTime: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -15,12 +17,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   today.setHours(0, 0, 0, 0);
   const startOfDay = today.toISOString().replace('T', ' ').substring(0, 19);
 
-  // Today Sales
+  // Today Sales (Invoices + Delivered Maintenance)
   const salesResult = await db.select<{total: number}[]>(
-    `SELECT SUM(paid_amount) as total FROM invoices WHERE created_at >= $1`,
+    `SELECT SUM(total_amount) as total FROM invoices WHERE created_at >= $1`,
     [startOfDay]
   );
-  const todaySales = salesResult[0]?.total || 0;
+  const maintenanceIncomeResult = await db.select<{total: number}[]>(
+    `SELECT SUM(final_cost) as total FROM maintenance WHERE status = 'delivered' AND updated_at >= $1`,
+    [startOfDay]
+  );
+  const todaySales = (salesResult[0]?.total || 0) + (maintenanceIncomeResult[0]?.total || 0);
 
   // Active Maintenance (not delivered/rejected)
   const maintenanceResult = await db.select<{count: number}[]>(
@@ -41,21 +47,46 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   );
   const lowStockCount = stockResult[0]?.count || 0;
 
+  // All Time Sales
+  const allSalesResult = await db.select<{total: number}[]>(
+    `SELECT SUM(total_amount) as total FROM invoices`
+  );
+  const allMaintenanceIncomeResult = await db.select<{total: number}[]>(
+    `SELECT SUM(final_cost) as total FROM maintenance WHERE status = 'delivered'`
+  );
+  const totalSalesAllTime = (allSalesResult[0]?.total || 0) + (allMaintenanceIncomeResult[0]?.total || 0);
+
+  // All Time Profit
+  const invoiceProfitResult = await db.select<{profit: number}[]>(
+    `SELECT SUM(i.total_amount - COALESCE((SELECT SUM(ii.cost_price * ii.quantity) FROM invoice_items ii WHERE ii.invoice_id = i.id), 0)) as profit FROM invoices i`
+  );
+  const maintenanceProfitResult = await db.select<{profit: number}[]>(
+    `SELECT SUM(final_cost - spare_parts_cost) as profit FROM maintenance WHERE status = 'delivered'`
+  );
+  const totalProfitAllTime = (invoiceProfitResult[0]?.profit || 0) + (maintenanceProfitResult[0]?.profit || 0);
+
   return {
     todaySales,
     activeMaintenance,
     todayTransfersComm,
-    lowStockCount
+    lowStockCount,
+    totalSalesAllTime,
+    totalProfitAllTime
   };
 }
 
 export async function getRecentInvoices() {
   const db = await getDb();
   return await db.select<any[]>(
-    `SELECT invoices.id, invoices.total_amount, invoices.created_at, customers.name as customer_name
+    `SELECT invoices.id, invoices.total_amount, invoices.created_at, customers.name as customer_name, 'مبيعات' as type
      FROM invoices 
      LEFT JOIN customers ON invoices.customer_id = customers.id
-     ORDER BY invoices.id DESC LIMIT 5`
+     UNION ALL
+     SELECT m.id, m.final_cost as total_amount, m.updated_at as created_at, c.name as customer_name, 'صيانة' as type
+     FROM maintenance m
+     LEFT JOIN customers c ON m.customer_id = c.id
+     WHERE m.status = 'delivered'
+     ORDER BY created_at DESC LIMIT 5`
   );
 }
 

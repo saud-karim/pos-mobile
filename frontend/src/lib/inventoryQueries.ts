@@ -76,6 +76,26 @@ export async function addProduct(product: Product) {
   return result.lastInsertId;
 }
 
+export async function editProduct(product: Product) {
+  const db = await getDb();
+  return await db.execute(
+    `UPDATE products 
+     SET category_id = $1, name = $2, barcode = $3, imei = $4, cost_price = $5, selling_price = $6, stock_quantity = $7, min_stock = $8
+     WHERE id = $9`,
+    [
+      product.category_id,
+      product.name,
+      product.barcode || null,
+      product.imei || null,
+      product.cost_price,
+      product.selling_price,
+      product.stock_quantity,
+      product.min_stock,
+      product.id
+    ]
+  );
+}
+
 export async function deleteProduct(id: number) {
   const db = await getDb();
   return await db.execute('DELETE FROM products WHERE id = $1', [id]);
@@ -84,4 +104,15 @@ export async function deleteProduct(id: number) {
 export async function updateProductStock(id: number, qtyChange: number) {
   const db = await getDb();
   return await db.execute('UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2', [qtyChange, id]);
+}
+
+export async function getSpareParts() {
+  const db = await getDb();
+  return await db.select<any[]>(
+    `SELECT p.*, c.name as category_name, c.type as category_type
+     FROM products p
+     JOIN categories c ON p.category_id = c.id
+     WHERE c.type IN ('accessory', 'spare_part') AND p.stock_quantity > 0
+     ORDER BY p.name ASC`
+  );
 }

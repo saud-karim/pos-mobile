@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X } from 'lucide-react';
+import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X, Smartphone, Tag } from 'lucide-react';
 import { CartItem, createInvoice, searchProductsPos, getPosQuickItems, getProductByBarcode } from '../lib/posQueries';
 import { Product } from '../lib/inventoryQueries';
 import { getCustomers, Customer } from '../lib/customersQueries';
@@ -12,7 +12,8 @@ import toast from 'react-hot-toast';
 export function POS() {
   const user = useAuthStore(state => state.user);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [quickItems, setQuickItems] = useState<Product[]>([]);
+  const [quickItems, setQuickItems] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'all' | 'new_phones' | 'used_phones' | 'products'>('all');
   
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,13 +49,6 @@ export function POS() {
     loadQuickItems();
     loadCustomers();
   }, []);
-
-  useEffect(() => {
-    // If user hasn't typed a custom paid amount, default to full payment
-    if (paidAmount === '' || Number(paidAmount) > finalTotal) {
-      setPaidAmount(finalTotal);
-    }
-  }, [finalTotal]);
 
   useEffect(() => {
     if (searchQuery.trim().length > 1) {
@@ -215,11 +209,45 @@ export function POS() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-4 border-b border-border">
+          <button 
+            onClick={() => setActiveTab('all')}
+            className={`pb-3 px-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'all' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            الكل
+          </button>
+          <button 
+            onClick={() => setActiveTab('new_phones')}
+            className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'new_phones' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <Smartphone className="w-4 h-4" /> هواتف جديدة
+          </button>
+          <button 
+            onClick={() => setActiveTab('products')}
+            className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'products' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <Tag className="w-4 h-4" /> إكسسوارات وقطع
+          </button>
+          <button 
+            onClick={() => setActiveTab('used_phones')}
+            className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'used_phones' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <Smartphone className="w-4 h-4" /> هواتف مستعملة
+          </button>
+        </div>
+
         {/* Quick Items Grid */}
         <div className="flex-1 bg-card rounded-2xl border border-border p-6 overflow-y-auto shadow-sm">
           <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {quickItems.length === 0 && <div className="col-span-full text-center text-slate-500 py-10">المخزن فارغ أو تم بيع كافة المنتجات</div>}
-            {quickItems.map(item => (
+            {quickItems.filter(item => {
+              if (activeTab === 'all') return true;
+              if (activeTab === 'new_phones') return item.category_type === 'new_phone';
+              if (activeTab === 'used_phones') return item.category_type === 'used_phone';
+              if (activeTab === 'products') return item.category_type === 'accessory' || item.category_type === 'spare_part';
+              return true;
+            }).map(item => (
               <button 
                 key={item.id}
                 onClick={() => addToCart(item)}

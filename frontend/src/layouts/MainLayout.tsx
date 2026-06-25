@@ -6,7 +6,8 @@ import { getCurrentShift, openShift, calculateExpectedCash, closeShift, Shift } 
 import { 
   Sun, Moon, LayoutDashboard, Smartphone, 
   Wrench, ArrowRightLeft, ShoppingCart, 
-  Users, FileText, Settings as SettingsIcon, LogOut, Lock, Unlock, AlertCircle, Coins
+  Users, FileText, Settings as SettingsIcon, LogOut, Lock, Unlock, AlertCircle, Coins,
+  Package, Store, Truck, FileSpreadsheet
 } from 'lucide-react';
 import { addExpense } from '../lib/expensesQueries';
 import { Settings } from '../pages/Settings';
@@ -121,6 +122,13 @@ export function MainLayout() {
     { name: 'التقارير', path: '/reports', icon: FileText },
   ];
 
+  const wholesaleNavItems = [
+    { name: 'رئيسية الجملة', path: '/wholesale', icon: Package },
+    { name: 'مخزن الجملة', path: '/wholesale/inventory', icon: Store },
+    { name: 'التجار والمحلات', path: '/wholesale/merchants', icon: Truck },
+    { name: 'فواتير الجملة', path: '/wholesale/orders', icon: FileSpreadsheet },
+  ];
+
   return (
     <div dir="rtl" className="flex h-screen bg-background text-foreground overflow-hidden transition-colors duration-300">
       
@@ -152,6 +160,27 @@ export function MainLayout() {
                 <span className="text-sm truncate">{item.name}</span>
               </NavLink>
             ))}
+
+            <div className="mt-4 mb-2 px-4">
+              <span className="text-xs font-black text-muted-foreground uppercase tracking-wider">نظام الجملة</span>
+            </div>
+
+            {wholesaleNavItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold ${
+                    isActive 
+                      ? 'bg-amber-600 text-white shadow-md' 
+                      : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                  }`
+                }
+              >
+                <item.icon className="w-5 h-5 shrink-0" />
+                <span className="text-sm truncate">{item.name}</span>
+              </NavLink>
+            ))}
           </nav>
         </div>
       </aside>
@@ -163,7 +192,7 @@ export function MainLayout() {
         <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 shrink-0 shadow-sm z-40">
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-black text-foreground">
-              {navItems.find(item => item.path === location.pathname)?.name || 'الرئيسية'}
+              {[...navItems, ...wholesaleNavItems].find(item => item.path === location.pathname)?.name || 'الرئيسية'}
             </h1>
           </div>
           <div className="flex items-center gap-2">

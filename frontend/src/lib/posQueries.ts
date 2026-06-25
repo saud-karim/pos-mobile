@@ -119,9 +119,11 @@ export async function returnInvoice(invoiceId: number) {
 
 export async function getPosQuickItems() {
   const db = await getDb();
-  // For now, return the latest 20 items.
-  // We can add a "is_quick_item" boolean to products later, but this works for demo.
-  return await db.select<Product[]>(
-    `SELECT * FROM products WHERE stock_quantity > 0 ORDER BY id DESC LIMIT 20`
+  return await db.select<any[]>(
+    `SELECT p.*, c.type as category_type 
+     FROM products p 
+     LEFT JOIN categories c ON p.category_id = c.id 
+     WHERE p.stock_quantity > 0 
+     ORDER BY p.id DESC LIMIT 100`
   );
 }

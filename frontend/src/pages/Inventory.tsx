@@ -1,22 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Tag, Smartphone, AlertTriangle, RefreshCw, X, Package } from 'lucide-react';
-import { getProducts, getCategories, addProduct, Product, Category } from '../lib/inventoryQueries';
+import { Plus, Search, Tag, Smartphone, AlertTriangle, RefreshCw, X, Package, Download } from 'lucide-react';
+import { getProducts, addProduct, editProduct, Product, getCategories, Category } from '../lib/inventoryQueries';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { exportToExcel } from '../lib/exportUtils';
-import { Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function Inventory() {
-  const [activeTab, setActiveTab] = useState('products');
+  const [activeTab, setActiveTab] = useState('new_phones');
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Add Product Form State
+  // Add/Edit Product Form State
   const [showAddForm, setShowAddForm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
-    name: '', category_id: 3, barcode: '', imei: '', cost_price: 0, selling_price: 0, stock_quantity: 0, min_stock: 0
+    category_id: 1, name: '', cost_price: 0, selling_price: 0, stock_quantity: 0, min_stock: 5, barcode: '', imei: ''
   });
 
   const loadData = async () => {
@@ -51,14 +51,26 @@ export function Inventory() {
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await addProduct(newProduct as Product);
-      toast.success('تمت إضافة المنتج بنجاح');
+      if (isEditing) {
+        await editProduct(newProduct as Product);
+        toast.success('تم تعديل المنتج بنجاح');
+      } else {
+        await addProduct(newProduct as Product);
+        toast.success('تمت إضافة المنتج بنجاح');
+      }
       setShowAddForm(false);
-      setNewProduct({ name: '', category_id: 3, barcode: '', imei: '', cost_price: 0, selling_price: 0, stock_quantity: 0, min_stock: 0 });
+      setIsEditing(false);
+      setNewProduct({ category_id: categories[0]?.id || 1, name: '', cost_price: 0, selling_price: 0, stock_quantity: 0, min_stock: 5, barcode: '', imei: '' });
       loadData();
     } catch (error: any) {
       toast.error('حدث خطأ: ' + error.message);
     }
+  };
+
+  const openEditModal = (p: Product) => {
+    setNewProduct(p);
+    setIsEditing(true);
+    setShowAddForm(true);
   };
 
   const handleExport = () => {
@@ -89,7 +101,11 @@ export function Inventory() {
             <span>تصدير جرد Excel</span>
           </button>
           <button 
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => {
+              setIsEditing(false);
+              setNewProduct({ category_id: categories[0]?.id || 1, name: '', cost_price: 0, selling_price: 0, stock_quantity: 0, min_stock: 5, barcode: '', imei: '' });
+              setShowAddForm(true);
+            }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-bold shadow-sm"
           >
             <Plus className="w-5 h-5" />
@@ -103,7 +119,7 @@ export function Inventory() {
           <form onSubmit={handleAddProduct} className="bg-card w-full max-w-3xl rounded-2xl shadow-xl border border-border overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-6 border-b border-border bg-muted/30">
               <h2 className="text-2xl font-black flex items-center gap-2">
-                <Package className="w-6 h-6 text-primary" /> إضافة منتج جديد
+                <Package className="w-6 h-6 text-primary" /> {isEditing ? 'تعديل منتج' : 'إضافة منتج جديد'}
               </h2>
               <button type="button" onClick={() => setShowAddForm(false)} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground">
                 <X className="w-6 h-6" />
@@ -159,22 +175,28 @@ export function Inventory() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-[var(--border)]">
+      <div className="flex gap-4 border-b border-[var(--border)] overflow-x-auto">
+        <button 
+          onClick={() => setActiveTab('new_phones')}
+          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'new_phones' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+        >
+          <Smartphone className="w-4 h-4" /> الهواتف الجديدة
+        </button>
         <button 
           onClick={() => setActiveTab('products')}
-          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors ${activeTab === 'products' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'products' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
         >
-          <Tag className="w-4 h-4" /> الأصناف والإكسسوارات
+          <Tag className="w-4 h-4" /> الإكسسوارات وقطع الغيار
         </button>
         <button 
           onClick={() => setActiveTab('used_phones')}
-          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors ${activeTab === 'used_phones' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'used_phones' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
         >
-          <Smartphone className="w-4 h-4" /> شراء الهواتف المستعملة
+          <Smartphone className="w-4 h-4" /> الهواتف المستعملة
         </button>
         <button 
           onClick={() => setActiveTab('alerts')}
-          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors ${activeTab === 'alerts' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+          className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'alerts' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
         >
           <AlertTriangle className="w-4 h-4" /> تنبيهات النواقص
         </button>
@@ -199,43 +221,50 @@ export function Inventory() {
           </button>
         </div>
 
-        {activeTab === 'products' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="py-4 px-4 font-medium">الباركود/IMEI</th>
-                  <th className="py-4 px-4 font-medium">اسم المنتج</th>
-                  <th className="py-4 px-4 font-medium">الفئة</th>
-                  <th className="py-4 px-4 font-medium">الكمية</th>
-                  <th className="py-4 px-4 font-medium">سعر التكلفة</th>
-                  <th className="py-4 px-4 font-medium">سعر البيع</th>
-                  <th className="py-4 px-4 font-medium">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">لا توجد منتجات في المخزن</td></tr>
-                ) : (
-                  products.map(p => (
-                    <tr key={p.id} className="border-b border-border hover:bg-muted/50 transition-colors">
-                      <td className="py-3 px-4 text-muted-foreground text-sm font-mono">{p.barcode || p.imei || '-'}</td>
-                      <td className="py-3 px-4 font-bold">{p.name}</td>
-                      <td className="py-3 px-4"><span className="bg-muted text-foreground px-2 py-1 rounded-md text-xs">{p.category_name}</span></td>
-                      <td className="py-3 px-4 font-black text-emerald-600 dark:text-emerald-400">{p.stock_quantity}</td>
-                      <td className="py-3 px-4 text-muted-foreground font-medium">{p.cost_price} ج.م</td>
-                      <td className="py-3 px-4 font-black text-primary">{p.selling_price} ج.م</td>
-                      <td className="py-3 px-4">
-                        <button className="text-blue-500 hover:text-blue-600 hover:underline font-medium">تعديل</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {(() => {
+          let filteredProducts = products;
+          if (activeTab === 'new_phones') filteredProducts = products.filter(p => p.category_type === 'new_phone');
+          else if (activeTab === 'used_phones') filteredProducts = products.filter(p => p.category_type === 'used_phone');
+          else if (activeTab === 'products') filteredProducts = products.filter(p => p.category_type === 'accessory' || p.category_type === 'spare_part');
+          else if (activeTab === 'alerts') filteredProducts = products.filter(p => p.stock_quantity <= p.min_stock);
 
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="py-4 px-4 font-medium">الباركود/IMEI</th>
+                    <th className="py-4 px-4 font-medium">اسم المنتج</th>
+                    <th className="py-4 px-4 font-medium">الفئة</th>
+                    <th className="py-4 px-4 font-medium">الكمية</th>
+                    <th className="py-4 px-4 font-medium">سعر التكلفة</th>
+                    <th className="py-4 px-4 font-medium">سعر البيع</th>
+                    <th className="py-4 px-4 font-medium">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProducts.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">لا توجد منتجات مطابقة في هذا القسم</td></tr>
+                  ) : (
+                    filteredProducts.map(p => (
+                      <tr key={p.id} className="border-b border-border hover:bg-muted/50 transition-colors">
+                        <td className="py-3 px-4 text-muted-foreground text-sm font-mono">{p.barcode || p.imei || '-'}</td>
+                        <td className="py-3 px-4 font-bold">{p.name}</td>
+                        <td className="py-3 px-4"><span className="bg-muted text-foreground px-2 py-1 rounded-md text-xs">{p.category_name}</span></td>
+                        <td className="py-3 px-4 font-black text-emerald-600 dark:text-emerald-400">{p.stock_quantity}</td>
+                        <td className="py-3 px-4 text-muted-foreground font-medium">{p.cost_price} ج.م</td>
+                        <td className="py-3 px-4 font-black text-primary">{p.selling_price} ج.م</td>
+                        <td className="py-3 px-4">
+                          <button onClick={() => openEditModal(p)} className="text-blue-500 hover:text-blue-600 hover:underline font-medium">تعديل</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

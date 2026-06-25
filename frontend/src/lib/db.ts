@@ -74,6 +74,19 @@ export async function initDb() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS maintenance_parts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      maintenance_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_price REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (maintenance_id) REFERENCES maintenance (id),
+      FOREIGN KEY (product_id) REFERENCES products (id)
+    )
+  `);
+
   // Money Transfers & Recharges
   await db.execute(`
     CREATE TABLE IF NOT EXISTS money_transfers (
@@ -178,6 +191,91 @@ export async function initDb() {
       ('قطع غيار', 'spare_part')
     `);
   }
+
+  // --- Wholesale Module (قسم الجملة) ---
+
+  // 1. Wholesale Capital
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS wholesale_capital (
+      id INTEGER PRIMARY KEY CHECK (id = 1), -- Only one row allowed
+      balance REAL NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Initialize wholesale_capital with 0 if not exists
+  const capCount = await db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM wholesale_capital');
+  if (capCount[0].count === 0) {
+    await db.execute('INSERT INTO wholesale_capital (id, balance) VALUES (1, 0)');
+  }
+
+  // 2. Wholesale Transactions (Ledger for capital)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS wholesale_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL, -- 'deposit', 'withdrawal'
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+
+  // 3. Wholesale Merchants (Suppliers & Clients)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS wholesale_merchants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      type TEXT NOT NULL, -- 'supplier', 'client', 'both'
+      balance REAL DEFAULT 0, -- Positive = they owe us, Negative = we owe them
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 4. Wholesale Inventory
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS wholesale_inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      barcode TEXT,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      cost_price REAL NOT NULL,
+      wholesale_price REAL NOT NULL,
+      min_stock INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 5. Wholesale Orders (Purchases & Sales)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS wholesale_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      merchant_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      type TEXT NOT NULL, -- 'purchase', 'sale'
+      total_amount REAL NOT NULL,
+      paid_amount REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (merchant_id) REFERENCES wholesale_merchants (id),
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+
+  // 6. Wholesale Order Items
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS wholesale_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      wholesale_inventory_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      cost_price REAL NOT NULL, -- Snapshot of cost at time of order
+      FOREIGN KEY (order_id) REFERENCES wholesale_orders (id),
+      FOREIGN KEY (wholesale_inventory_id) REFERENCES wholesale_inventory (id)
+    )
+  `);
 
   return db;
 }

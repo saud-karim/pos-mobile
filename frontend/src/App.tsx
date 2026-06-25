@@ -12,6 +12,13 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from './store/authStore';
 import { Login } from './pages/Login';
 import { Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+
+// Wholesale Pages
+import { WholesaleDashboard } from './pages/wholesale/WholesaleDashboard';
+import { WholesaleInventory } from './pages/wholesale/WholesaleInventory';
+import { WholesaleMerchants } from './pages/wholesale/WholesaleMerchants';
+import { WholesaleOrders } from './pages/wholesale/WholesaleOrders';
 
 function App() {
   const [dbReady, setDbReady] = useState(false);
@@ -42,8 +49,10 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+    <>
+      <Toaster position="top-center" toastOptions={{ duration: 4000, style: { fontWeight: 'bold' } }} />
+      <Routes>
+        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
       <Route path="/" element={user ? <MainLayout /> : <Navigate to="/login" />}>
         <Route index element={<Dashboard />} />
         {/* other routes will go here */}
@@ -53,8 +62,15 @@ function App() {
         <Route path="pos" element={<POS />} />
         <Route path="customers" element={<Customers />} />
         <Route path="reports" element={<Reports />} />
+
+        {/* Wholesale Routes */}
+        <Route path="wholesale" element={<WholesaleDashboard />} />
+        <Route path="wholesale/inventory" element={<WholesaleInventory />} />
+        <Route path="wholesale/merchants" element={<WholesaleMerchants />} />
+        <Route path="wholesale/orders" element={<WholesaleOrders />} />
       </Route>
     </Routes>
+    </>
   );
 }
 
