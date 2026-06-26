@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X, Smartphone, Tag } from 'lucide-react';
+import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X } from 'lucide-react';
 import { CartItem, createInvoice, searchProductsPos, getPosQuickItems, getProductByBarcode } from '../lib/posQueries';
 import { Product } from '../lib/inventoryQueries';
 import { getCustomers, Customer } from '../lib/customersQueries';
@@ -12,13 +12,12 @@ import toast from 'react-hot-toast';
 export function POS() {
   const user = useAuthStore(state => state.user);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [quickItems, setQuickItems] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'all' | 'new_phones' | 'used_phones' | 'products'>('all');
-  
+  const [quickItems, setQuickItems] = useState<Product[]>([]);
+
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
-  
+
   // Customer State
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -125,7 +124,7 @@ export function POS() {
     }
 
     const actualPaid = paidAmount === '' ? finalTotal : Number(paidAmount);
-    
+
     if (actualPaid < finalTotal && !selectedCustomer) {
       toast.error('لا يمكن عمل فاتورة آجلة (دين) بدون اختيار العميل أولاً');
       return;
@@ -140,12 +139,12 @@ export function POS() {
       }
 
       const invoiceId = await createInvoice(
-        selectedCustomer?.id || null, 
-        user.id, 
-        cart, 
-        total, 
-        discount, 
-        actualPaid, 
+        selectedCustomer?.id || null,
+        user.id,
+        cart,
+        total,
+        discount,
+        actualPaid,
         paymentMethod
       );
 
@@ -168,7 +167,7 @@ export function POS() {
       setDiscount(0);
       setPaidAmount('');
       setSelectedCustomer(null);
-      loadQuickItems(); 
+      loadQuickItems();
     } catch (error: any) {
       toast.error('حدث خطأ أثناء الدفع: ' + error.message);
     }
@@ -181,9 +180,9 @@ export function POS() {
         <div className="flex gap-4 relative">
           <div className="relative flex-1">
             <Search className="w-5 h-5 absolute right-3 top-3 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="ابحث بالباركود أو الاسم السريع..." 
+            <input
+              type="text"
+              placeholder="ابحث بالباركود أو الاسم السريع..."
               autoFocus
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
@@ -192,7 +191,7 @@ export function POS() {
             {searchResults.length > 0 && (
               <div className="absolute top-full right-0 left-0 mt-2 bg-card border border-border rounded-2xl shadow-xl z-10 max-h-60 overflow-y-auto">
                 {searchResults.map(p => (
-                  <button 
+                  <button
                     key={p.id}
                     onClick={() => addToCart(p)}
                     className="w-full text-right p-4 hover:bg-muted border-b border-border flex justify-between items-center transition-colors"
@@ -209,46 +208,12 @@ export function POS() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-4 border-b border-border">
-          <button 
-            onClick={() => setActiveTab('all')}
-            className={`pb-3 px-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'all' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            الكل
-          </button>
-          <button 
-            onClick={() => setActiveTab('new_phones')}
-            className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'new_phones' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <Smartphone className="w-4 h-4" /> هواتف جديدة
-          </button>
-          <button 
-            onClick={() => setActiveTab('products')}
-            className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'products' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <Tag className="w-4 h-4" /> إكسسوارات وقطع
-          </button>
-          <button 
-            onClick={() => setActiveTab('used_phones')}
-            className={`pb-3 px-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'used_phones' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <Smartphone className="w-4 h-4" /> هواتف مستعملة
-          </button>
-        </div>
-
         {/* Quick Items Grid */}
         <div className="flex-1 bg-card rounded-2xl border border-border p-6 overflow-y-auto shadow-sm">
           <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {quickItems.length === 0 && <div className="col-span-full text-center text-slate-500 py-10">المخزن فارغ أو تم بيع كافة المنتجات</div>}
-            {quickItems.filter(item => {
-              if (activeTab === 'all') return true;
-              if (activeTab === 'new_phones') return item.category_type === 'new_phone';
-              if (activeTab === 'used_phones') return item.category_type === 'used_phone';
-              if (activeTab === 'products') return item.category_type === 'accessory' || item.category_type === 'spare_part';
-              return true;
-            }).map(item => (
-              <button 
+            {quickItems.map(item => (
+              <button
                 key={item.id}
                 onClick={() => addToCart(item)}
                 className="flex flex-col items-center justify-center p-4 border border-border rounded-2xl hover:bg-primary/5 hover:border-primary/30 transition-all active:scale-95"
@@ -266,7 +231,7 @@ export function POS() {
 
       {/* Cart (Right Side) */}
       <div className="w-[400px] bg-card rounded-2xl border border-border flex flex-col shadow-sm">
-        
+
         {/* Customer Select */}
         <div className="relative">
           <div className="p-5 border-b border-border flex items-center justify-between bg-muted/30 rounded-t-2xl">
@@ -286,12 +251,12 @@ export function POS() {
               </button>
             )}
           </div>
-          
+
           {showCustomerSelect && (
             <div className="absolute top-full left-0 right-0 bg-card border border-border shadow-2xl z-20 max-h-64 overflow-y-auto">
               {customers.map(c => (
-                <button 
-                  key={c.id} 
+                <button
+                  key={c.id}
                   onClick={() => { setSelectedCustomer(c); setShowCustomerSelect(false); }}
                   className="w-full text-right px-5 py-3 hover:bg-muted border-b border-border transition-colors"
                 >
@@ -340,27 +305,27 @@ export function POS() {
             </div>
             <div className="flex justify-between items-center text-sm font-bold text-muted-foreground">
               <span>الخصم</span>
-              <input 
-                type="number" 
-                value={discount} 
+              <input
+                type="number"
+                value={discount}
                 onChange={e => setDiscount(Number(e.target.value))}
-                className="w-24 text-center border border-border rounded-lg px-2 py-1 text-destructive font-black bg-background focus:ring-2 focus:ring-destructive outline-none transition-all" 
+                className="w-24 text-center border border-border rounded-lg px-2 py-1 text-destructive font-black bg-background focus:ring-2 focus:ring-destructive outline-none transition-all"
               />
             </div>
             <div className="flex justify-between items-center pt-3 border-t border-border">
               <span className="font-black text-foreground">الإجمالي النهائي</span>
               <span className="font-black text-3xl text-emerald-600 dark:text-emerald-400">{finalTotal} ج.م</span>
             </div>
-            
+
             {/* Payment Input (For partial payment / debt) */}
             <div className="flex justify-between items-center pt-2 mt-4 bg-orange-500/10 p-3 rounded-xl border border-orange-500/20">
               <span className="text-sm font-black text-orange-600">المدفوع نقداً</span>
-              <input 
-                type="number" 
-                value={paidAmount} 
+              <input
+                type="number"
+                value={paidAmount}
                 onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder={finalTotal.toString()}
-                className="w-28 text-center border border-orange-500/30 rounded-lg px-2 py-1.5 bg-background font-black text-lg focus:ring-2 focus:ring-orange-500 outline-none transition-all" 
+                className="w-28 text-center border border-orange-500/30 rounded-lg px-2 py-1.5 bg-background font-black text-lg focus:ring-2 focus:ring-orange-500 outline-none transition-all"
               />
             </div>
             {Number(paidAmount) < finalTotal && selectedCustomer && (
