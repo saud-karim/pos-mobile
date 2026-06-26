@@ -1,91 +1,95 @@
 import { getDb } from './db';
 
 export interface DashboardStats {
-  todaySales: number;
-  todayMaintenance: number;
+  periodSales: number;
+  periodMaintenance: number;
   activeMaintenance: number;
-  todayTransfersComm: number;
+  periodTransfersComm: number;
   lowStockCount: number;
-  totalSalesAllTime: number;
-  totalProfitAllTime: number;
-  todayPayments: number;
+  periodProfit: number;
+  periodPayments: number;
+  capitals: {id: number, name: string, balance: number}[];
 }
 
-export async function getDashboardStats(): Promise<DashboardStats> {
+export async function getDashboardStats(startDate?: string, endDate?: string): Promise<DashboardStats> {
   const db = await getDb();
   
-  // Today's boundaries
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const startOfDay = today.toISOString().replace('T', ' ').substring(0, 19);
+  let dateCondition = "";
+  let updatedDateCondition = "";
+  let params: any[] = [];
 
-  // Today Sales (Invoices only)
-  const salesResult = await db.select<{total: number}[]>(
-    `SELECT SUM(total_amount) as total FROM invoices WHERE created_at >= $1`,
-    [startOfDay]
-  );
-  const todaySales = salesResult[0]?.total || 0;
+  if (startDate && endDate) {
+    dateCondition = "WHERE created_at >= $1 AND created_at <= $2";
+    updatedDateCondition = "WHERE status = 'delivered' AND updated_at >= $1 AND updated_at <= $2";
+    params = [startDate, endDate];
+  } else {
+    // Default to All Time if no filter provided
+    dateCondition = "";
+    updatedDateCondition = "WHERE status = 'delivered'";
+  }
 
-  // Today Maintenance Income (Net Profit)
-  const maintenanceIncomeResult = await db.select<{total: number}[]>(
-    `SELECT SUM(final_cost - spare_parts_cost) as total FROM maintenance WHERE status = 'delivered' AND updated_at >= $1`,
-    [startOfDay]
-  );
-  const todayMaintenance = maintenanceIncomeResult[0]?.total || 0;
+  // Helper for safe query execution
+  const executeQuery = async (query: string, useParams: boolean = true) => {
+    const res = await db.select<{total: number, count: number, profit: number}[]>(query, useParams ? params : []);
+    return res[0];
+  };
 
-  // Active Maintenance (not delivered/rejected)
-  const maintenanceResult = await db.select<{count: number}[]>(
-    `SELECT COUNT(*) as count FROM maintenance WHERE status IN ('pending', 'in_progress', 'ready')`
-  );
-  const activeMaintenance = maintenanceResult[0]?.count || 0;
+  // 1. Sales (Invoices + Wholesale Sales)
+  // Retail Sales
+  const salesResult = await executeQuery(`SELECT SUM(total_amount) as total FROM invoices ${dateCondition}`);
+  // Wholesale Sales
+  const wholesaleSalesResult = await executeQuery(`SELECT SUM(total_amount) as total FROM wholesale_orders WHERE type = 'sale' ${dateCondition ? 'AND created_at >= $1 AND created_at <= $2' : ''}`);
+  
+  const periodSales = (salesResult?.total || 0) + (wholesaleSalesResult?.total || 0);
 
-  // Today's Transfer Commissions
-  const transfersResult = await db.select<{total: number}[]>(
-    `SELECT SUM(commission) as total FROM money_transfers WHERE created_at >= $1`,
-    [startOfDay]
-  );
-  const todayTransfersComm = transfersResult[0]?.total || 0;
+  // 2. Maintenance Income (Net Profit)
+  const maintenanceIncomeResult = await executeQuery(`SELECT SUM(final_cost - spare_parts_cost) as total FROM maintenance ${updatedDateCondition}`);
+  const periodMaintenance = maintenanceIncomeResult?.total || 0;
 
-  // Today's Debt Payments
-  const paymentsResult = await db.select<{total: number}[]>(
-    `SELECT SUM(amount) as total FROM customer_payments WHERE created_at >= $1`,
-    [startOfDay]
-  );
-  const todayPayments = paymentsResult[0]?.total || 0;
+  // 3. Active Maintenance (not delivered/rejected) - Independent of time filter
+  const maintenanceResult = await executeQuery(`SELECT COUNT(*) as count FROM maintenance WHERE status IN ('pending', 'in_progress', 'ready')`, false);
+  const activeMaintenance = maintenanceResult?.count || 0;
 
-  // Low Stock
-  const stockResult = await db.select<{count: number}[]>(
-    `SELECT COUNT(*) as count FROM products WHERE stock_quantity <= min_stock`
-  );
-  const lowStockCount = stockResult[0]?.count || 0;
+  // 4. Transfer Commissions
+  const transfersResult = await executeQuery(`SELECT SUM(commission) as total FROM money_transfers ${dateCondition}`);
+  const periodTransfersComm = transfersResult?.total || 0;
 
-  // All Time Sales
-  const allSalesResult = await db.select<{total: number}[]>(
-    `SELECT SUM(total_amount) as total FROM invoices`
-  );
-  const allMaintenanceIncomeResult = await db.select<{total: number}[]>(
-    `SELECT SUM(final_cost) as total FROM maintenance WHERE status = 'delivered'`
-  );
-  const totalSalesAllTime = (allSalesResult[0]?.total || 0) + (allMaintenanceIncomeResult[0]?.total || 0);
+  // 5. Debt Payments
+  const paymentsResult = await executeQuery(`SELECT SUM(amount) as total FROM customer_payments ${dateCondition}`);
+  const periodPayments = paymentsResult?.total || 0;
 
-  // All Time Profit
-  const invoiceProfitResult = await db.select<{profit: number}[]>(
-    `SELECT SUM(i.total_amount - COALESCE((SELECT SUM(ii.cost_price * ii.quantity) FROM invoice_items ii WHERE ii.invoice_id = i.id), 0)) as profit FROM invoices i`
-  );
-  const maintenanceProfitResult = await db.select<{profit: number}[]>(
-    `SELECT SUM(final_cost - spare_parts_cost) as profit FROM maintenance WHERE status = 'delivered'`
-  );
-  const totalProfitAllTime = (invoiceProfitResult[0]?.profit || 0) + (maintenanceProfitResult[0]?.profit || 0);
+  // 6. Low Stock - Independent of time filter
+  const stockResult = await executeQuery(`SELECT COUNT(*) as count FROM inventory WHERE quantity <= min_stock`, false);
+  const lowStockCount = stockResult?.count || 0;
+
+  // 7. Profit
+  // Retail Profit
+  const invoiceProfitResult = await executeQuery(`
+    SELECT SUM(i.total_amount - COALESCE((SELECT SUM(ii.cost_price * ii.quantity) FROM invoice_items ii WHERE ii.invoice_id = i.id), 0)) as profit 
+    FROM invoices i 
+    ${dateCondition}
+  `);
+  // Wholesale Profit
+  const wholesaleProfitResult = await executeQuery(`
+    SELECT SUM(o.total_amount - COALESCE((SELECT SUM(oi.cost_price * oi.quantity) FROM wholesale_order_items oi WHERE oi.order_id = o.id), 0)) as profit 
+    FROM wholesale_orders o 
+    WHERE o.type = 'sale' ${dateCondition ? 'AND o.created_at >= $1 AND o.created_at <= $2' : ''}
+  `);
+  
+  const periodProfit = (invoiceProfitResult?.profit || 0) + (wholesaleProfitResult?.profit || 0) + periodMaintenance + periodTransfersComm;
+
+  // 8. Capitals
+  const capitals = await db.select<{id: number, name: string, balance: number}[]>(`SELECT * FROM capitals ORDER BY id ASC`);
 
   return {
-    todaySales,
-    todayMaintenance,
+    periodSales,
+    periodMaintenance,
     activeMaintenance,
-    todayTransfersComm,
+    periodTransfersComm,
     lowStockCount,
-    totalSalesAllTime,
-    totalProfitAllTime,
-    todayPayments
+    periodProfit,
+    periodPayments,
+    capitals
   };
 }
 

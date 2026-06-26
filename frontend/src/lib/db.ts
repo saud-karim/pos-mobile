@@ -1,6 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 
-const DB_NAME = 'sqlite:pos_mobile.db';
+const DB_NAME = 'sqlite:pos_mobile_v2.db';
 
 export async function initDb() {
   const db = await Database.load(DB_NAME);
@@ -24,35 +24,83 @@ export async function initDb() {
       phone TEXT,
       national_id TEXT,
       credit_balance REAL DEFAULT 0,
+      capital_id INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (capital_id) REFERENCES capitals (id)
+    )
+  `);
+
+  try {
+    await db.execute('ALTER TABLE customers ADD COLUMN capital_id INTEGER DEFAULT 1');
+  } catch (e) {
+    // Column exists
+  }
+
+  try {
+    await db.execute('ALTER TABLE customers ADD COLUMN is_active INTEGER DEFAULT 1');
+  } catch (e) {
+    // Column exists
+  }
+
+  // Capitals (3 types: Goods, Transfers, Maintenance)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS capitals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      balance REAL NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Initialize capitals
+  const capCount = await db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM capitals');
+  if (capCount[0].count === 0) {
+    await db.execute(`
+      INSERT INTO capitals (id, name, balance) VALUES 
+      (1, 'البضاعة والجملة', 0),
+      (2, 'التحويلات', 0),
+      (3, 'الصيانة', 0)
+    `);
+  }
+
+  // Capital Transactions Ledger
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS capital_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      capital_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL, -- 'deposit', 'withdrawal'
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (capital_id) REFERENCES capitals (id),
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+
+  // Unified Inventory
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL, -- e.g., 'هواتف جديدة', 'هواتف مستعملة', 'إكسسوارات', 'قطع غيار'
+      name TEXT NOT NULL,
+      barcode TEXT,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      cost_price REAL NOT NULL,
+      selling_price REAL NOT NULL,
+      retail_price REAL NOT NULL DEFAULT 0,
+      min_stock INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-  // Inventory Categories
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL -- 'new_phone', 'used_phone', 'accessory', 'spare_part'
-    )
-  `);
-
-  // Products (Inventory)
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      category_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      barcode TEXT,
-      imei TEXT UNIQUE, -- Mainly for phones
-      cost_price REAL NOT NULL,
-      selling_price REAL NOT NULL,
-      stock_quantity INTEGER NOT NULL DEFAULT 0,
-      min_stock INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (category_id) REFERENCES categories (id)
-    )
-  `);
+  try {
+    await db.execute('ALTER TABLE inventory ADD COLUMN retail_price REAL DEFAULT 0');
+    await db.execute('UPDATE inventory SET retail_price = selling_price WHERE retail_price = 0');
+  } catch (e) {
+    // Column exists
+  }
 
   // Maintenance Records
   await db.execute(`
@@ -78,23 +126,21 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS maintenance_parts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       maintenance_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
+      inventory_id INTEGER NOT NULL,
       quantity INTEGER NOT NULL DEFAULT 1,
       unit_price REAL NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (maintenance_id) REFERENCES maintenance (id),
-      FOREIGN KEY (product_id) REFERENCES products (id)
+      FOREIGN KEY (inventory_id) REFERENCES inventory (id)
     )
   `);
 
-  // Money Transfers & Recharges
+  // Money Transfers (Refactored)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS money_transfers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      phone_number TEXT,
-      amount REAL NOT NULL,
+      type TEXT NOT NULL, -- Service name (Vodafone Cash, etc.)
       commission REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users (id)
@@ -122,12 +168,12 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS invoice_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_id INTEGER NOT NULL,
-      product_id INTEGER,
+      inventory_id INTEGER,
       quantity INTEGER NOT NULL,
       unit_price REAL NOT NULL,
-      cost_price REAL NOT NULL, -- snapshot of cost price at the time of sale for accurate profit
+      cost_price REAL NOT NULL, -- snapshot
       FOREIGN KEY (invoice_id) REFERENCES invoices (id),
-      FOREIGN KEY (product_id) REFERENCES products (id)
+      FOREIGN KEY (inventory_id) REFERENCES inventory (id)
     )
   `);
 
@@ -151,10 +197,12 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
+      capital_id INTEGER NOT NULL,
       amount REAL NOT NULL,
       description TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users (id)
+      FOREIGN KEY (user_id) REFERENCES users (id),
+      FOREIGN KEY (capital_id) REFERENCES capitals (id)
     )
   `);
 
@@ -180,49 +228,9 @@ export async function initDb() {
     `);
   }
 
-  // Insert default categories if none exist
-  const catCount = await db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM categories');
-  if (catCount[0].count === 0) {
-    await db.execute(`
-      INSERT INTO categories (name, type) VALUES 
-      ('هواتف جديدة', 'new_phone'),
-      ('هواتف مستعملة', 'used_phone'),
-      ('إكسسوارات', 'accessory'),
-      ('قطع غيار', 'spare_part')
-    `);
-  }
-
   // --- Wholesale Module (قسم الجملة) ---
 
-  // 1. Wholesale Capital
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS wholesale_capital (
-      id INTEGER PRIMARY KEY CHECK (id = 1), -- Only one row allowed
-      balance REAL NOT NULL DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Initialize wholesale_capital with 0 if not exists
-  const capCount = await db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM wholesale_capital');
-  if (capCount[0].count === 0) {
-    await db.execute('INSERT INTO wholesale_capital (id, balance) VALUES (1, 0)');
-  }
-
-  // 2. Wholesale Transactions (Ledger for capital)
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS wholesale_transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      amount REAL NOT NULL,
-      type TEXT NOT NULL, -- 'deposit', 'withdrawal'
-      description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users (id)
-    )
-  `);
-
-  // 3. Wholesale Merchants (Suppliers & Clients)
+  // Wholesale Merchants (Suppliers & Clients)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS wholesale_merchants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,25 +238,18 @@ export async function initDb() {
       phone TEXT,
       type TEXT NOT NULL, -- 'supplier', 'client', 'both'
       balance REAL DEFAULT 0, -- Positive = they owe us, Negative = we owe them
+      is_active INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-  // 4. Wholesale Inventory
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS wholesale_inventory (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      barcode TEXT,
-      quantity INTEGER NOT NULL DEFAULT 0,
-      cost_price REAL NOT NULL,
-      wholesale_price REAL NOT NULL,
-      min_stock INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  try {
+    await db.execute('ALTER TABLE wholesale_merchants ADD COLUMN is_active INTEGER DEFAULT 1');
+  } catch (e) {
+    // Column exists
+  }
 
-  // 5. Wholesale Orders (Purchases & Sales)
+  // Wholesale Orders (Purchases & Sales)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS wholesale_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -263,17 +264,17 @@ export async function initDb() {
     )
   `);
 
-  // 6. Wholesale Order Items
+  // Wholesale Order Items
   await db.execute(`
     CREATE TABLE IF NOT EXISTS wholesale_order_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_id INTEGER NOT NULL,
-      wholesale_inventory_id INTEGER NOT NULL,
+      inventory_id INTEGER NOT NULL,
       quantity INTEGER NOT NULL,
       unit_price REAL NOT NULL,
-      cost_price REAL NOT NULL, -- Snapshot of cost at time of order
+      cost_price REAL NOT NULL, -- Snapshot
       FOREIGN KEY (order_id) REFERENCES wholesale_orders (id),
-      FOREIGN KEY (wholesale_inventory_id) REFERENCES wholesale_inventory (id)
+      FOREIGN KEY (inventory_id) REFERENCES inventory (id)
     )
   `);
 

@@ -6,8 +6,9 @@ export async function exportDatabase() {
     const db = await getDb();
     const backup: Record<string, any[]> = {};
     
-    // List all tables
-    const tables = ['users', 'categories', 'products', 'customers', 'maintenance', 'money_transfers', 'invoices', 'invoice_items', 'shifts'];
+    // Get all tables dynamically
+    const tableNamesRes = await db.select<{name: string}[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`);
+    const tables = tableNamesRes.map(t => t.name);
     
     for (const table of tables) {
       backup[table] = await db.select(`SELECT * FROM ${table}`);
@@ -36,19 +37,45 @@ export async function importDatabase(file: File) {
         const backup = JSON.parse(e.target?.result as string);
         const db = await getDb();
         
-        // This is a destructive operation. We clear existing tables first.
-        const tables = ['invoice_items', 'invoices', 'shifts', 'maintenance', 'money_transfers', 'products', 'categories', 'customers', 'users'];
-        
-        // Wrap in transaction if possible, but Tauri SQL doesn't fully support manual transactions yet easily.
-        // We'll just delete and insert.
+        // Get all tables dynamically
+        const tableNamesRes = await db.select<{name: string}[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`);
+        const tables = tableNamesRes.map(t => t.name);
+
+        // Build dependency graph using foreign keys
+        const graph: Record<string, string[]> = {};
         for (const table of tables) {
+          graph[table] = [];
+          const fks = await db.select<any[]>(`PRAGMA foreign_key_list(${table})`);
+          for (const fk of fks) {
+            graph[table].push(fk.table);
+          }
+        }
+
+        // Topological Sort
+        const insertTables: string[] = [];
+        const visited = new Set<string>();
+
+        function visit(node: string) {
+          if (visited.has(node)) return;
+          visited.add(node);
+          for (const dep of graph[node] || []) {
+            visit(dep);
+          }
+          insertTables.push(node);
+        }
+
+        for (const table of tables) {
+          visit(table);
+        }
+
+        const deleteTables = [...insertTables].reverse();
+        
+        // Clear tables in reverse dependency order
+        for (const table of deleteTables) {
           await db.execute(`DELETE FROM ${table}`);
         }
         
-        // Insert data back
-        // Need to reverse the table order for insertion so foreign keys don't fail, 
-        // actually users, categories, customers first.
-        const insertTables = ['users', 'categories', 'customers', 'products', 'maintenance', 'money_transfers', 'invoices', 'invoice_items', 'shifts'];
+        // Insert data in dependency order
         
         for (const table of insertTables) {
           const rows = backup[table] || [];

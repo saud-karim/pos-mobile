@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, User, CreditCard, UserPlus, X } from 'lucide-react';
-import { getCustomers, addCustomer, addCustomerPayment, Customer } from '../lib/customersQueries';
+import { Search, User, CreditCard, UserPlus, X, Trash2 } from 'lucide-react';
+import { getCustomers, addCustomer, addCustomerPayment, deleteCustomer, Customer } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
 import { printDebtPaymentReceipt } from '../lib/printUtils';
 import toast from 'react-hot-toast';
@@ -9,11 +9,13 @@ export function Customers() {
   const user = useAuthStore(state => state.user);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
 
   // Add Customer State
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({ name: '', phone: '', national_id: '', credit_balance: 0 });
+  const [newCustomer, setNewCustomer] = useState<Partial<Customer> & { capital_id: number }>({ name: '', phone: '', national_id: '', credit_balance: 0, capital_id: 1 });
 
   // Payment State
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
@@ -21,12 +23,13 @@ export function Customers() {
 
   useEffect(() => {
     loadCustomers();
-  }, [searchQuery]);
+  }, [searchQuery, page]);
 
   const loadCustomers = async () => {
     try {
-      const data = await getCustomers(searchQuery);
+      const { data, total, limit } = await getCustomers(searchQuery, page, 20);
       setCustomers(data);
+      setTotalPages(Math.ceil(total / limit) || 1);
     } catch (err: any) {
       toast.error('حدث خطأ أثناء تحميل العملاء');
     }
@@ -34,14 +37,15 @@ export function Customers() {
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return toast.error('يرجى تسجيل الدخول');
     try {
-      await addCustomer(newCustomer as Customer);
+      await addCustomer(newCustomer as Customer, user.id);
       toast.success('تمت إضافة العميل بنجاح');
       setShowAddForm(false);
-      setNewCustomer({ name: '', phone: '', national_id: '', credit_balance: 0 });
+      setNewCustomer({ name: '', phone: '', national_id: '', credit_balance: 0, capital_id: 1 });
       loadCustomers();
     } catch (err: any) {
-      toast.error('حدث خطأ: ' + err.message);
+      toast.error('حدث خطأ: ' + (err.message || String(err)));
     }
   };
 
@@ -52,7 +56,7 @@ export function Customers() {
       return;
     }
     try {
-      await addCustomerPayment(customer.id!, user.id, Number(paymentAmount));
+      await addCustomerPayment(customer.id!, user.id, Number(paymentAmount), customer.name);
       
       printDebtPaymentReceipt({
         customerName: customer.name,
@@ -68,7 +72,18 @@ export function Customers() {
       setPaymentAmount('');
       loadCustomers();
     } catch (err: any) {
-      toast.error('حدث خطأ: ' + err.message);
+      toast.error('حدث خطأ: ' + (err.message || String(err)));
+    }
+  };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!window.confirm(`هل أنت متأكد من حذف العميل "${name}"؟ سيتم تحويل فواتيره لمبيعات عامة ولن يمكنك التراجع.`)) return;
+    try {
+      await deleteCustomer(id);
+      toast.success('تم حذف العميل بنجاح');
+      loadCustomers();
+    } catch (err: any) {
+      toast.error('حدث خطأ أثناء الحذف: ' + (err.message || String(err)));
     }
   };
 
@@ -113,10 +128,22 @@ export function Customers() {
                 <input type="text" className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all" 
                   value={newCustomer.national_id || ''} onChange={e => setNewCustomer({...newCustomer, national_id: e.target.value})} />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-1">
                 <label className="block text-sm mb-2 font-medium">مديونية سابقة (رصيد افتتاحي)</label>
                 <input type="number" className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all" 
                   value={newCustomer.credit_balance} onChange={e => setNewCustomer({...newCustomer, credit_balance: Number(e.target.value)})} />
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm mb-2 font-medium">العميل مرتبط بخزنة؟</label>
+                <select 
+                  value={newCustomer.capital_id}
+                  onChange={e => setNewCustomer({...newCustomer, capital_id: Number(e.target.value)})}
+                  className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all font-bold"
+                >
+                  <option value={1}>البضاعة والجملة</option>
+                  <option value={2}>التحويلات والشحن</option>
+                  <option value={3}>الصيانة والمصنعية</option>
+                </select>
               </div>
             </div>
 
@@ -141,7 +168,7 @@ export function Customers() {
               type="text" 
               placeholder="البحث بالاسم أو رقم الهاتف أو الرقم القومي..." 
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
               className="w-full pr-10 pl-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary transition-shadow"
             />
           </div>
@@ -195,12 +222,20 @@ export function Customers() {
                         <button onClick={() => setSelectedCustomerId(null)} className="text-muted-foreground hover:bg-muted px-3 py-1.5 rounded-lg text-sm font-bold">إلغاء</button>
                       </div>
                     ) : (
-                      <button 
-                        onClick={() => setSelectedCustomerId(customer.id!)}
-                        className="flex items-center gap-2 text-primary bg-primary/10 hover:bg-primary/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
-                      >
-                        <CreditCard className="w-4 h-4" /> دفع دفعة
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setSelectedCustomerId(customer.id!)}
+                          className="flex items-center gap-2 text-primary bg-primary/10 hover:bg-primary/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                        >
+                          <CreditCard className="w-4 h-4" /> دفع دفعة
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(customer.id!, customer.name)}
+                          className="flex items-center gap-2 text-destructive bg-destructive/10 hover:bg-destructive/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" /> حذف
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -208,6 +243,41 @@ export function Customers() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-border flex items-center justify-center gap-2 bg-muted/20">
+            <button 
+              disabled={page === 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+            >
+              السابق
+            </button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-10 h-10 rounded-xl font-bold border transition-colors ${
+                    page === p 
+                      ? 'bg-primary border-primary text-primary-foreground' 
+                      : 'bg-card border-border hover:bg-muted text-foreground'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <button 
+              disabled={page === totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+            >
+              التالي
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Truck, Plus, Search, HandCoins, User } from 'lucide-react';
-import { getWholesaleMerchants, addWholesaleMerchant, addMerchantPayment } from '../../lib/wholesaleQueries';
+import { Truck, Plus, Search, HandCoins, User, Edit2, Trash2 } from 'lucide-react';
+import { getWholesaleMerchants, addWholesaleMerchant, addMerchantPayment, updateWholesaleMerchant, deleteWholesaleMerchant } from '../../lib/wholesaleQueries';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
@@ -10,19 +10,25 @@ export function WholesaleMerchants() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  // Add Merchant Modal
+  // Add/Edit Merchant Modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMerchant, setNewMerchant] = useState({ name: '', phone: '', type: 'client' });
+  
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingMerchant, setEditingMerchant] = useState<{id: number, name: string, phone: string, type: string} | null>(null);
 
   // Payment Modal
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedMerchant, setSelectedMerchant] = useState<any>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const loadData = async () => {
     try {
-      const data = await getWholesaleMerchants();
+      const { data, total, limit } = await getWholesaleMerchants('both', page, 20);
       setMerchants(data);
+      setTotalPages(Math.ceil(total / limit) || 1);
     } catch (error) {
       console.error(error);
       toast.error('فشل في تحميل التجار');
@@ -33,7 +39,7 @@ export function WholesaleMerchants() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [page]);
 
   const handleAddMerchant = async () => {
     if (!newMerchant.name.trim()) return toast.error('أدخل اسم التاجر أو المحل');
@@ -43,9 +49,35 @@ export function WholesaleMerchants() {
       setShowAddModal(false);
       setNewMerchant({ name: '', phone: '', type: 'client' });
       loadData();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('حدث خطأ');
+      toast.error('حدث خطأ: ' + (error.message || String(error)));
+    }
+  };
+
+  const handleEditMerchant = async () => {
+    if (!editingMerchant || !editingMerchant.name.trim()) return toast.error('أدخل اسم التاجر أو المحل');
+    try {
+      await updateWholesaleMerchant(editingMerchant.id, editingMerchant);
+      toast.success('تم التعديل بنجاح');
+      setShowEditModal(false);
+      setEditingMerchant(null);
+      loadData();
+    } catch (error: any) {
+      console.error(error);
+      toast.error('حدث خطأ: ' + (error.message || String(error)));
+    }
+  };
+
+  const handleDeleteMerchant = async (merchant: any) => {
+    if (!window.confirm(`هل أنت متأكد من حذف التاجر/المحل "${merchant.name}"؟`)) return;
+    try {
+      await deleteWholesaleMerchant(merchant.id);
+      toast.success('تم الحذف بنجاح');
+      loadData();
+    } catch (error: any) {
+      console.error(error);
+      toast.error('خطأ: ' + (error.message || String(error)));
     }
   };
 
@@ -106,7 +138,8 @@ export function WholesaleMerchants() {
       {loading ? (
         <div className="p-8 text-center text-muted-foreground">جاري التحميل...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredMerchants.length === 0 ? (
             <div className="col-span-full p-8 text-center bg-card rounded-2xl border border-border text-muted-foreground">
               لا يوجد تجار أو محلات مسجلة.
@@ -130,6 +163,22 @@ export function WholesaleMerchants() {
                           {merchant.type === 'supplier' ? 'مورد (تاجر كبير)' : merchant.type === 'client' ? 'عميل (محل)' : 'مورد وعميل'}
                         </span>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => { setEditingMerchant(merchant); setShowEditModal(true); }}
+                        className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
+                        title="تعديل"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteMerchant(merchant)}
+                        className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                   {merchant.phone && (
@@ -172,8 +221,43 @@ export function WholesaleMerchants() {
             ))
           )}
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-border flex items-center justify-center gap-2 bg-muted/20">
+            <button 
+              disabled={page === 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+            >
+              السابق
+            </button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-10 h-10 rounded-xl font-bold border transition-colors ${
+                    page === p 
+                      ? 'bg-primary border-primary text-primary-foreground' 
+                      : 'bg-card border-border hover:bg-muted text-foreground'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <button 
+              disabled={page === totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+            >
+              التالي
+            </button>
+          </div>
+        )}
+      </div>
       )}
-
       {/* Add Merchant Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
@@ -220,6 +304,58 @@ export function WholesaleMerchants() {
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-xl hover:bg-muted font-bold">إلغاء</button>
               <button onClick={handleAddMerchant} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90">
                 حفظ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Merchant Modal */}
+      {showEditModal && editingMerchant && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-md p-6 rounded-2xl border border-border shadow-2xl">
+            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+              <Edit2 className="w-6 h-6 text-primary" /> تعديل بيانات التاجر
+            </h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-bold mb-2">اسم التاجر أو المحل</label>
+                <input 
+                  type="text"
+                  value={editingMerchant.name}
+                  onChange={e => setEditingMerchant({ ...editingMerchant, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-2">رقم الهاتف (اختياري)</label>
+                <input 
+                  type="text"
+                  value={editingMerchant.phone || ''}
+                  onChange={e => setEditingMerchant({ ...editingMerchant, phone: e.target.value })}
+                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary font-mono text-left"
+                  dir="ltr"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-2">نوع التاجر</label>
+                <select 
+                  value={editingMerchant.type}
+                  onChange={e => setEditingMerchant({ ...editingMerchant, type: e.target.value })}
+                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="client">عميل (محل نبيع له)</option>
+                  <option value="supplier">مورد (تاجر نشتري منه)</option>
+                  <option value="both">مورد وعميل</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowEditModal(false)} className="px-4 py-2 rounded-xl hover:bg-muted font-bold">إلغاء</button>
+              <button onClick={handleEditMerchant} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90">
+                تحديث
               </button>
             </div>
           </div>

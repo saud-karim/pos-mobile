@@ -1,7 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
 import { Dashboard } from './pages/Dashboard';
-import { Inventory } from './pages/Inventory';
 import { Transfers } from './pages/Transfers';
 import { Maintenance } from './pages/Maintenance';
 import { POS } from './pages/POS';
@@ -56,7 +55,6 @@ function App() {
       <Route path="/" element={user ? <MainLayout /> : <Navigate to="/login" />}>
         <Route index element={<Dashboard />} />
         {/* other routes will go here */}
-        <Route path="inventory" element={<Inventory />} />
         <Route path="maintenance" element={<Maintenance />} />
         <Route path="transfers" element={<Transfers />} />
         <Route path="pos" element={<POS />} />

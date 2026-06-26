@@ -7,6 +7,8 @@ export function WholesaleInventory() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [showModal, setShowModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -17,14 +19,16 @@ export function WholesaleInventory() {
     barcode: '',
     quantity: '',
     cost_price: '',
-    wholesale_price: '',
+    selling_price: '',
+    retail_price: '',
     min_stock: '0'
   });
 
   const loadData = async () => {
     try {
-      const data = await getWholesaleInventory(search);
+      const { data, total, limit } = await getWholesaleInventory(search, page, 20);
       setProducts(data);
+      setTotalPages(Math.ceil(total / limit) || 1);
     } catch (error) {
       console.error(error);
       toast.error('فشل في تحميل المخزون');
@@ -35,11 +39,11 @@ export function WholesaleInventory() {
 
   useEffect(() => {
     loadData();
-  }, [search]);
+  }, [search, page]);
 
   const handleOpenAdd = () => {
     setEditMode(false);
-    setFormData({ name: '', barcode: '', quantity: '', cost_price: '', wholesale_price: '', min_stock: '0' });
+    setFormData({ name: '', barcode: '', quantity: '', cost_price: '', selling_price: '', retail_price: '', min_stock: '0' });
     setShowModal(true);
   };
 
@@ -51,7 +55,8 @@ export function WholesaleInventory() {
       barcode: product.barcode || '',
       quantity: product.quantity.toString(),
       cost_price: product.cost_price.toString(),
-      wholesale_price: product.wholesale_price.toString(),
+      selling_price: product.selling_price.toString(),
+      retail_price: product.retail_price?.toString() || product.selling_price.toString(),
       min_stock: product.min_stock.toString()
     });
     setShowModal(true);
@@ -60,15 +65,18 @@ export function WholesaleInventory() {
   const handleSubmit = async () => {
     if (!formData.name.trim()) return toast.error('أدخل اسم المنتج');
     if (!formData.cost_price || Number(formData.cost_price) < 0) return toast.error('سعر التكلفة غير صحيح');
-    if (!formData.wholesale_price || Number(formData.wholesale_price) < 0) return toast.error('سعر الجملة غير صحيح');
+    if (!formData.selling_price || Number(formData.selling_price) < 0) return toast.error('سعر الجملة غير صحيح');
+    if (!formData.retail_price || Number(formData.retail_price) < 0) return toast.error('سعر القطاعي غير صحيح');
 
     try {
       if (editMode && selectedProductId) {
         await updateWholesaleProduct(selectedProductId, {
           name: formData.name,
+          category: 'أخرى',
           barcode: formData.barcode || null,
           cost_price: Number(formData.cost_price),
-          wholesale_price: Number(formData.wholesale_price),
+          selling_price: Number(formData.selling_price),
+          retail_price: Number(formData.retail_price),
           min_stock: Number(formData.min_stock)
         });
         toast.success('تم التعديل بنجاح');
@@ -76,10 +84,12 @@ export function WholesaleInventory() {
         if (!formData.quantity || Number(formData.quantity) < 0) return toast.error('الكمية غير صحيحة');
         await addWholesaleProduct({
           name: formData.name,
+          category: 'أخرى',
           barcode: formData.barcode || null,
           quantity: Number(formData.quantity),
           cost_price: Number(formData.cost_price),
-          wholesale_price: Number(formData.wholesale_price),
+          selling_price: Number(formData.selling_price),
+          retail_price: Number(formData.retail_price),
           min_stock: Number(formData.min_stock)
         });
         toast.success('تمت إضافة المنتج بنجاح');
@@ -108,7 +118,7 @@ export function WholesaleInventory() {
               type="text"
               placeholder="بحث في المخزن..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
               className="w-full pl-4 pr-10 py-2.5 bg-card border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
@@ -133,7 +143,8 @@ export function WholesaleInventory() {
                   <th className="p-4 font-bold">الباركود</th>
                   <th className="p-4 font-bold">الكمية المتاحة</th>
                   <th className="p-4 font-bold">سعر الشراء (عليك)</th>
-                  <th className="p-4 font-bold">سعر البيع (للتجار)</th>
+                  <th className="p-4 font-bold text-amber-600">سعر البيع (للجملة)</th>
+                  <th className="p-4 font-bold text-emerald-600">سعر البيع (قطاعي)</th>
                   <th className="p-4 font-bold">إجمالي التكلفة</th>
                   <th className="p-4 font-bold">تعديل</th>
                 </tr>
@@ -160,7 +171,8 @@ export function WholesaleInventory() {
                         </span>
                       </td>
                       <td className="p-4 text-emerald-600 font-bold">{p.cost_price.toLocaleString()} ج.م</td>
-                      <td className="p-4 text-blue-600 font-bold">{p.wholesale_price.toLocaleString()} ج.م</td>
+                      <td className="p-4 text-amber-600 font-bold">{p.selling_price.toLocaleString()} ج.م</td>
+                      <td className="p-4 text-emerald-600 font-bold">{p.retail_price?.toLocaleString() || p.selling_price.toLocaleString()} ج.م</td>
                       <td className="p-4 font-bold">{(p.quantity * p.cost_price).toLocaleString()} ج.م</td>
                       <td className="p-4">
                         <button 
@@ -176,6 +188,41 @@ export function WholesaleInventory() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="p-4 border-t border-border flex items-center justify-center gap-2 bg-muted/20">
+              <button 
+                disabled={page === 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+              >
+                السابق
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`w-10 h-10 rounded-xl font-bold border transition-colors ${
+                      page === p 
+                        ? 'bg-primary border-primary text-primary-foreground' 
+                        : 'bg-card border-border hover:bg-muted text-foreground'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <button 
+                disabled={page === totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+              >
+                التالي
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -231,12 +278,22 @@ export function WholesaleInventory() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold mb-2">سعر البيع (للتجار/المحلات)</label>
+                <label className="block text-sm font-bold mb-2 text-amber-600">سعر البيع للجملة (للتجار/المحلات)</label>
                 <input 
                   type="number"
-                  value={formData.wholesale_price}
-                  onChange={e => setFormData({ ...formData, wholesale_price: e.target.value })}
-                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary font-bold text-blue-600"
+                  value={formData.selling_price}
+                  onChange={e => setFormData({ ...formData, selling_price: e.target.value })}
+                  className="w-full px-4 py-3 bg-muted border border-amber-500/30 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 font-bold text-amber-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold mb-2 text-emerald-600">سعر البيع القطاعي (للكاشير)</label>
+                <input 
+                  type="number"
+                  value={formData.retail_price}
+                  onChange={e => setFormData({ ...formData, retail_price: e.target.value })}
+                  className="w-full px-4 py-3 bg-muted border border-emerald-500/30 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-600"
                 />
               </div>
 

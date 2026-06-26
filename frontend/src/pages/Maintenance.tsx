@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Wrench, X } from 'lucide-react';
-import { getMaintenanceJobs, addMaintenanceJob, updateMaintenanceStatus, MaintenanceJob, getMaintenanceParts, addMaintenancePart, removeMaintenancePart, MaintenancePart } from '../lib/maintenanceQueries';
+import { Plus, Search, Wrench, X, Trash2 } from 'lucide-react';
+import { getMaintenanceJobs, addMaintenanceJob, updateMaintenanceStatus, MaintenanceJob, getMaintenanceParts, addMaintenancePart, removeMaintenancePart, MaintenancePart, getSpareParts } from '../lib/maintenanceQueries';
 import { getCustomers } from '../lib/customersQueries';
-import { getSpareParts } from '../lib/inventoryQueries';
 import { useAuthStore } from '../store/authStore';
 import { printMaintenanceTicket } from '../lib/printUtils';
 import toast from 'react-hot-toast';
@@ -44,7 +43,7 @@ export function Maintenance() {
 
   const loadCustomersAndParts = async () => {
     try {
-      const data = await getCustomers();
+      const { data } = await getCustomers();
       setCustomers(data);
       const parts = await getSpareParts();
       setSpareParts(parts);
@@ -102,16 +101,6 @@ export function Maintenance() {
       issueDescription: job.issue_description,
       estimatedCost: job.estimated_cost
     });
-  };
-
-  const handleUpdateStatus = async (id: number, status: string) => {
-    try {
-      await updateMaintenanceStatus(id, status);
-      toast.success('تم تحديث الحالة');
-      loadJobs();
-    } catch (err: any) {
-      toast.error('حدث خطأ: ' + err.message);
-    }
   };
 
   const handleOpenDetails = async (job: MaintenanceJob) => {
@@ -324,8 +313,8 @@ export function Maintenance() {
                             <td className="py-2 px-3">{p.quantity}</td>
                             <td className="py-2 px-3">{p.unit_price} ج.م</td>
                             <td className="py-2 px-3">
-                              <button onClick={() => handleRemovePart(p.id!, p.product_id, p.quantity)} className="text-rose-500 hover:text-rose-700">
-                                <X className="w-4 h-4" />
+                              <button onClick={() => handleRemovePart(p.id!, p.inventory_id, p.quantity)} className="text-red-500 hover:bg-red-50 p-1 rounded-md transition-colors">
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </td>
                           </tr>

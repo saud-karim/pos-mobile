@@ -95,3 +95,49 @@ export async function closeShift(shiftId: number, expectedCash: number, closingC
     [expectedCash, closingCash, shiftId]
   );
 }
+
+export async function getShiftsHistory(): Promise<(Shift & { user_name: string })[]> {
+  const db = await getDb();
+  return await db.select<(Shift & { user_name: string })[]>(
+    `SELECT s.*, u.username as user_name 
+     FROM shifts s 
+     LEFT JOIN users u ON s.user_id = u.id 
+     ORDER BY s.opened_at DESC`
+  );
+}
+
+export async function getShiftTransactions(userId: number, openedAt: string, closedAt: string | null) {
+  const db = await getDb();
+  
+  const timeCondition = closedAt 
+    ? `created_at >= $2 AND created_at <= $3` 
+    : `created_at >= $2`;
+  const params = closedAt ? [userId, openedAt, closedAt] : [userId, openedAt];
+
+  const invoices = await db.select<any[]>(
+    `SELECT * FROM invoices WHERE user_id = $1 AND ${timeCondition} ORDER BY created_at DESC`,
+    params
+  );
+  
+  const expenses = await db.select<any[]>(
+    `SELECT * FROM expenses WHERE user_id = $1 AND ${timeCondition} ORDER BY created_at DESC`,
+    params
+  );
+
+  const transfers = await db.select<any[]>(
+    `SELECT * FROM money_transfers WHERE user_id = $1 AND ${timeCondition} ORDER BY created_at DESC`,
+    params
+  );
+
+  const maintTimeCond = closedAt 
+    ? `updated_at >= $1 AND updated_at <= $2` 
+    : `updated_at >= $1`;
+  const maintParams = closedAt ? [openedAt, closedAt] : [openedAt];
+  
+  const maintenance = await db.select<any[]>(
+    `SELECT * FROM maintenance WHERE status = 'delivered' AND ${maintTimeCond} ORDER BY updated_at DESC`,
+    maintParams
+  );
+
+  return { invoices, expenses, transfers, maintenance };
+}

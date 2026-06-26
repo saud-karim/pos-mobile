@@ -32,6 +32,7 @@ export function MainLayout() {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
   const [expenseDesc, setExpenseDesc] = useState('');
+  const [expenseCapitalId, setExpenseCapitalId] = useState<number>(1);
 
   useEffect(() => {
     if (user) {
@@ -102,11 +103,12 @@ export function MainLayout() {
     if (!currentShift) return toast.error('لا يمكن تسجيل مصروف بدون وردية مفتوحة');
     
     try {
-      await addExpense(user.id, Number(expenseAmount), expenseDesc);
-      toast.success('تم تسجيل المصروف بنجاح (سيتم خصمه من الدرج)');
+      await addExpense(user.id, expenseCapitalId, Number(expenseAmount), expenseDesc);
+      toast.success('تم تسجيل المصروف بنجاح (وتم خصمه من الخزنة)');
       setShowExpenseModal(false);
       setExpenseAmount('');
       setExpenseDesc('');
+      setExpenseCapitalId(1);
     } catch (err: any) {
       toast.error('خطأ: ' + err.message);
     }
@@ -114,7 +116,6 @@ export function MainLayout() {
 
   const navItems = [
     { name: 'الرئيسية', path: '/', icon: LayoutDashboard },
-    { name: 'المخزون', path: '/inventory', icon: Smartphone },
     { name: 'الصيانة', path: '/maintenance', icon: Wrench },
     { name: 'الشحن والتحويلات', path: '/transfers', icon: ArrowRightLeft },
     { name: 'الكاشير', path: '/pos', icon: ShoppingCart },
@@ -148,6 +149,7 @@ export function MainLayout() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                end
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold ${
                     isActive 
@@ -169,6 +171,7 @@ export function MainLayout() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                end
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold ${
                     isActive 
@@ -339,8 +342,18 @@ export function MainLayout() {
               value={expenseDesc}
               onChange={e => setExpenseDesc(e.target.value)}
               placeholder="وصف المصروف (مثال: بوفيه، كهرباء...)"
-              className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-orange-500 font-bold mb-6"
+              className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-orange-500 font-bold mb-4"
             />
+            <label className="block text-sm font-bold mb-2">إخصم من خزنة:</label>
+            <select
+              value={expenseCapitalId}
+              onChange={e => setExpenseCapitalId(Number(e.target.value))}
+              className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-orange-500 font-bold mb-6"
+            >
+              <option value={1}>خزنة البضاعة والجملة</option>
+              <option value={2}>خزنة التحويلات</option>
+              <option value={3}>خزنة الصيانة</option>
+            </select>
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowExpenseModal(false)} className="px-4 py-2 rounded-xl hover:bg-muted font-bold">إلغاء</button>
               <button onClick={handleAddExpense} className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold transition-colors">حفظ المصروف</button>

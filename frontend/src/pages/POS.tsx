@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X } from 'lucide-react';
-import { CartItem, createInvoice, searchProductsPos, getPosQuickItems, getProductByBarcode } from '../lib/posQueries';
-import { Product } from '../lib/inventoryQueries';
+import { CartItem, createInvoice, searchProductsPos, getPosQuickItems, getProductByBarcode, InventoryItem as Product } from '../lib/posQueries';
 import { getCustomers, Customer } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
@@ -27,7 +26,7 @@ export function POS() {
   const [discount, setDiscount] = useState(0);
   const [paidAmount, setPaidAmount] = useState<number | ''>(''); // For partial payments / debt
 
-  const total = cart.reduce((acc, item) => acc + item.selling_price * item.cart_quantity, 0);
+  const total = cart.reduce((acc, item) => acc + (item.retail_price || item.selling_price) * item.cart_quantity, 0);
   const finalTotal = total - discount;
 
   // Global Barcode Scanner listener
@@ -68,7 +67,7 @@ export function POS() {
 
   const loadCustomers = async () => {
     try {
-      const data = await getCustomers();
+      const { data } = await getCustomers();
       setCustomers(data);
     } catch (err) {
       console.error(err);
@@ -78,13 +77,13 @@ export function POS() {
   const addToCart = (product: Product) => {
     const existing = cart.find(c => c.id === product.id);
     if (existing) {
-      if (existing.cart_quantity >= product.stock_quantity) {
+      if (existing.cart_quantity >= product.quantity) {
         toast.error('الكمية المطلوبة أكبر من المخزون المتاح');
         return;
       }
       setCart(cart.map(c => c.id === product.id ? { ...c, cart_quantity: c.cart_quantity + 1 } : c));
     } else {
-      if (product.stock_quantity <= 0) {
+      if (product.quantity <= 0) {
         toast.error('هذا المنتج غير متوفر في المخزن');
         return;
       }
@@ -98,7 +97,7 @@ export function POS() {
     setCart(cart.map(c => {
       if (c.id === id) {
         const newQty = c.cart_quantity + delta;
-        if (newQty > c.stock_quantity) {
+        if (newQty > c.quantity) {
           toast.error('الكمية غير متاحة في المخزن');
           return c;
         }
@@ -154,7 +153,7 @@ export function POS() {
         date: new Date().toLocaleString('ar-EG'),
         cashierName: user.username,
         customerName: selectedCustomer?.name,
-        items: cart.map(c => ({ name: c.name, quantity: c.cart_quantity, price: c.selling_price })),
+        items: cart.map(c => ({ name: c.name, quantity: c.cart_quantity, price: c.retail_price || c.selling_price })),
         subTotal: total,
         discount: discount,
         finalTotal: finalTotal,
@@ -198,9 +197,9 @@ export function POS() {
                   >
                     <div>
                       <div className="font-bold text-foreground">{p.name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{p.barcode || p.imei}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{p.barcode || 'بدون باركود'}</div>
                     </div>
-                    <span className="text-primary font-black">{p.selling_price} ج.م</span>
+                    <span className="text-primary font-black">{p.retail_price || p.selling_price} ج.م</span>
                   </button>
                 ))}
               </div>
@@ -222,7 +221,7 @@ export function POS() {
                   <ShoppingCart className="w-7 h-7 text-muted-foreground" />
                 </div>
                 <span className="text-sm font-bold text-center line-clamp-2 leading-tight text-foreground">{item.name}</span>
-                <span className="text-primary font-black mt-2 text-sm">{item.selling_price} ج.م</span>
+                <span className="text-primary font-black mt-2 text-sm">{item.retail_price || item.selling_price} ج.م</span>
               </button>
             ))}
           </div>
@@ -280,7 +279,7 @@ export function POS() {
             <div key={item.id} className="flex justify-between items-center border-b border-border pb-4 last:border-0 last:pb-0">
               <div className="flex-1">
                 <h4 className="font-bold text-foreground line-clamp-1">{item.name}</h4>
-                <div className="text-muted-foreground font-medium text-sm mt-1">{item.selling_price} ج.م</div>
+                <div className="text-muted-foreground font-medium text-sm mt-1">{item.retail_price || item.selling_price} ج.م</div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center border border-border rounded-xl overflow-hidden bg-muted">

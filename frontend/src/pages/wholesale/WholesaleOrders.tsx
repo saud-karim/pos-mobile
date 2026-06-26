@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileSpreadsheet, Plus, Search, Eye, Trash2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { FileSpreadsheet, Search, Eye, Trash2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { 
   getWholesaleOrders, 
   getWholesaleOrderItems, 
@@ -50,10 +50,10 @@ export function WholesaleOrders() {
 
   const loadDependencies = async () => {
     try {
-      const m = await getWholesaleMerchants();
-      const i = await getWholesaleInventory();
-      setMerchants(m);
-      setInventory(i);
+      const m = await getWholesaleMerchants('both', 1, 1000); // load all for dropdown
+      const i = await getWholesaleInventory('', 1, 1000); // load all for dropdown
+      setMerchants(m.data);
+      setInventory(i.data);
     } catch (error) {
       console.error(error);
     }

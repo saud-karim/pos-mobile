@@ -46,11 +46,27 @@ export async function getMaintenanceJobs(statusFilter?: string) {
 
 export async function updateMaintenanceStatus(id: number, status: string, finalCost?: number, partsCost?: number) {
   const db = await getDb();
+  
   if (finalCost !== undefined && partsCost !== undefined) {
-    return await db.execute(
+    const res = await db.execute(
       `UPDATE maintenance SET status = $1, final_cost = $2, spare_parts_cost = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
       [status, finalCost, partsCost, id]
     );
+
+    // If delivered, add to Maintenance Capital (Capital ID = 3)
+    if (status === 'delivered') {
+      await db.execute(
+        `UPDATE capitals SET balance = balance + $1 WHERE id = 3`,
+        [finalCost]
+      );
+      await db.execute(
+        `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) 
+         VALUES (3, 1, $1, 'deposit', $2)`,
+        [finalCost, `أرباح صيانة لجهاز رقم #${id}`] // Using user 1 as fallback for now
+      );
+    }
+    
+    return res;
   } else {
     return await db.execute(
       `UPDATE maintenance SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
@@ -62,32 +78,32 @@ export async function updateMaintenanceStatus(id: number, status: string, finalC
 export interface MaintenancePart {
   id?: number;
   maintenance_id: number;
-  product_id: number;
+  inventory_id: number;
   quantity: number;
   unit_price: number;
   product_name?: string;
 }
 
-export async function addMaintenancePart(maintenanceId: number, productId: number, quantity: number, unitPrice: number) {
+export async function addMaintenancePart(maintenanceId: number, inventoryId: number, quantity: number, unitPrice: number) {
   const db = await getDb();
   
   // Update inventory stock
-  await db.execute('UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2', [quantity, productId]);
+  await db.execute('UPDATE inventory SET quantity = quantity - $1 WHERE id = $2', [quantity, inventoryId]);
   
   // Insert part
   const result = await db.execute(
-    `INSERT INTO maintenance_parts (maintenance_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)`,
-    [maintenanceId, productId, quantity, unitPrice]
+    `INSERT INTO maintenance_parts (maintenance_id, inventory_id, quantity, unit_price) VALUES ($1, $2, $3, $4)`,
+    [maintenanceId, inventoryId, quantity, unitPrice]
   );
   
   return result.lastInsertId;
 }
 
-export async function removeMaintenancePart(partId: number, productId: number, quantity: number) {
+export async function removeMaintenancePart(partId: number, inventoryId: number, quantity: number) {
   const db = await getDb();
   
   // Restore inventory stock
-  await db.execute('UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2', [quantity, productId]);
+  await db.execute('UPDATE inventory SET quantity = quantity + $1 WHERE id = $2', [quantity, inventoryId]);
   
   // Delete part
   return await db.execute('DELETE FROM maintenance_parts WHERE id = $1', [partId]);
@@ -98,8 +114,15 @@ export async function getMaintenanceParts(maintenanceId: number) {
   return await db.select<MaintenancePart[]>(
     `SELECT mp.*, p.name as product_name 
      FROM maintenance_parts mp
-     JOIN products p ON mp.product_id = p.id
+     JOIN inventory p ON mp.inventory_id = p.id
      WHERE mp.maintenance_id = $1`,
     [maintenanceId]
+  );
+}
+
+export async function getSpareParts() {
+  const db = await getDb();
+  return await db.select<any[]>(
+    `SELECT * FROM inventory ORDER BY name ASC`
   );
 }

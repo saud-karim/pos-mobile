@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, FileText, Download, Lock, Unlock, AlertTriangle } from 'lucide-react';
+import { TrendingUp, FileText, Download, X } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getReportsStats, getRecentInvoices } from '../lib/reportsQueries';
-import { getCurrentShift, openShift, closeShift, calculateExpectedCash, Shift } from '../lib/shiftQueries';
+import { getTodayExpenses, Expense } from '../lib/expensesQueries';
+import { Shift, getShiftsHistory, getShiftTransactions } from '../lib/shiftQueries';
 import { returnInvoice } from '../lib/posQueries';
 import { useAuthStore } from '../store/authStore';
 import { exportToExcel } from '../lib/exportUtils';
@@ -13,18 +14,22 @@ export function Reports() {
   const [activeTab, setActiveTab] = useState('profits');
   const [stats, setStats] = useState({ sales: 0, maintenance: 0, transfers: 0 });
   const [invoices, setInvoices] = useState<any[]>([]);
-
-  // Shifts State
-  const [activeShift, setActiveShift] = useState<Shift | null>(null);
-  const [openingCashInput, setOpeningCashInput] = useState<number | ''>('');
-  const [closingCashInput, setClosingCashInput] = useState<number | ''>('');
-  const [expectedCash, setExpectedCash] = useState<number>(0);
+  const [expensesList, setExpensesList] = useState<Expense[]>([]);
+  const [shiftsHistory, setShiftsHistory] = useState<(Shift & { user_name: string })[]>([]);
+  const [selectedShiftDetails, setSelectedShiftDetails] = useState<any>(null);
+  const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
 
   useEffect(() => {
     loadStats();
-    loadActiveShift();
+
     if (activeTab === 'invoices') {
       loadInvoices();
+    }
+    if (activeTab === 'shifts') {
+      loadShiftsHistoryData();
+    }
+    if (activeTab === 'expenses') {
+      loadExpensesData();
     }
   }, [activeTab]);
 
@@ -37,42 +42,32 @@ export function Reports() {
     }
   };
 
-  const loadActiveShift = async () => {
+  const loadExpensesData = async () => {
     try {
-      if (!user) return;
-      const shift = await getCurrentShift(user.id);
-      setActiveShift(shift);
-      if (shift && shift.opened_at) {
-        const expected = await calculateExpectedCash(shift.id!, user.id, shift.opening_cash);
-        setExpectedCash(expected);
-      }
+      const data = await getTodayExpenses(); // get all expenses
+      setExpensesList(data);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleOpenShift = async () => {
-    if (!user) return toast.error('يرجى تسجيل الدخول');
-    if (openingCashInput === '') return toast.error('أدخل مبلغ العهدة الافتتاحية');
+  const loadShiftsHistoryData = async () => {
     try {
-      await openShift(user.id, Number(openingCashInput));
-      toast.success('تم فتح الوردية بنجاح');
-      loadActiveShift();
-    } catch (err: any) {
-      toast.error(err.message);
+      const data = await getShiftsHistory();
+      setShiftsHistory(data);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const handleCloseShift = async () => {
-    if (!activeShift) return;
-    if (closingCashInput === '') return toast.error('أدخل النقدية الفعلية في الدرج');
+  const handleViewShift = async (shift: any) => {
     try {
-      await closeShift(activeShift.id!, Number(closingCashInput), expectedCash);
-      toast.success('تم إغلاق الوردية بنجاح');
-      setActiveShift(null);
-      setClosingCashInput('');
-    } catch (err: any) {
-      toast.error(err.message);
+      const details = await getShiftTransactions(shift.user_id, shift.opened_at, shift.closed_at);
+      setSelectedShiftDetails({ shift, ...details });
+      setIsShiftModalOpen(true);
+    } catch (err) {
+      console.error(err);
+      toast.error('حدث خطأ أثناء جلب تفاصيل الوردية');
     }
   };
 
@@ -88,7 +83,7 @@ export function Reports() {
   const handleReturnInvoice = async (id: number) => {
     if (!window.confirm('هل أنت متأكد من إرجاع هذه الفاتورة بالكامل؟ سيتم استرجاع الكميات للمخزن وحذف الفاتورة.')) return;
     try {
-      await returnInvoice(id);
+      await returnInvoice(id, user!.id);
       toast.success('تم إرجاع الفاتورة بنجاح');
       loadInvoices();
       loadStats();
@@ -160,6 +155,12 @@ export function Reports() {
         >
           <FileText className="w-4 h-4" /> الفواتير والمرتجعات
         </button>
+        <button 
+          onClick={() => setActiveTab('expenses')}
+          className={`pb-3 px-2 font-bold flex items-center gap-2 transition-colors ${activeTab === 'expenses' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <FileText className="w-4 h-4" /> سجل المصروفات
+        </button>
       </div>
 
       {/* Content Area */}
@@ -210,77 +211,57 @@ export function Reports() {
         )}
 
         {activeTab === 'shifts' && (
-          <div className="max-w-2xl mx-auto py-8">
-            {!activeShift ? (
-              <div className="bg-muted/20 p-8 rounded-3xl border border-border text-center">
-                <Unlock className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-2xl font-black mb-2 text-foreground">لا توجد وردية مفتوحة</h3>
-                <p className="text-muted-foreground mb-8">يجب فتح وردية جديدة لبدء تسجيل المبيعات وحركة الدرج.</p>
-                
-                <div className="max-w-xs mx-auto text-right">
-                  <label className="block text-sm font-bold mb-2">العهدة الافتتاحية (النقدية الموجودة بالدرج حالياً)</label>
-                  <input 
-                    type="number" 
-                    value={openingCashInput}
-                    onChange={e => setOpeningCashInput(Number(e.target.value))}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl mb-4 focus:ring-2 focus:ring-primary outline-none transition-all font-bold"
-                    placeholder="مثال: 500 ج.م"
-                  />
-                  <button onClick={handleOpenShift} className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 border-t border-blue-400/30 py-3 rounded-xl font-bold transition-all active:scale-95">
-                    فتح الوردية
-                  </button>
-                </div>
+          <div className="max-w-4xl mx-auto py-8">
+            {/* Shifts History Table */}
+            <div>
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <FileText className="w-6 h-6 text-primary" /> سجل الورديات السابق
+              </h3>
+              <div className="overflow-x-auto bg-card rounded-2xl border border-border shadow-sm">
+                <table className="w-full text-right">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50 text-muted-foreground">
+                      <th className="py-3 px-4 font-medium">رقم الوردية</th>
+                      <th className="py-3 px-4 font-medium">الكاشير</th>
+                      <th className="py-3 px-4 font-medium">الفتح</th>
+                      <th className="py-3 px-4 font-medium">الإغلاق</th>
+                      <th className="py-3 px-4 font-medium">العهدة</th>
+                      <th className="py-3 px-4 font-medium">المتوقع</th>
+                      <th className="py-3 px-4 font-medium">الفعلي</th>
+                      <th className="py-3 px-4 font-medium">الحالة</th>
+                      <th className="py-3 px-4 font-medium text-center">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shiftsHistory.length === 0 && <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">لا يوجد ورديات مسجلة</td></tr>}
+                    {shiftsHistory.map(shift => (
+                      <tr key={shift.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                        <td className="py-3 px-4 font-bold">#{shift.id}</td>
+                        <td className="py-3 px-4 text-sm font-bold text-foreground">{shift.user_name}</td>
+                        <td className="py-3 px-4 text-xs text-muted-foreground">{new Date(shift.opened_at).toLocaleString('ar-EG')}</td>
+                        <td className="py-3 px-4 text-xs text-muted-foreground">{shift.closed_at ? new Date(shift.closed_at).toLocaleString('ar-EG') : '---'}</td>
+                        <td className="py-3 px-4 text-sm font-bold">{shift.opening_cash} ج.م</td>
+                        <td className="py-3 px-4 text-sm font-bold text-blue-600">{shift.expected_cash ?? '---'}</td>
+                        <td className="py-3 px-4 text-sm font-black text-emerald-600">{shift.closing_cash ?? '---'}</td>
+                        <td className="py-3 px-4 text-sm">
+                          {shift.status === 'open' 
+                            ? <span className="bg-emerald-500/10 text-emerald-600 px-2 py-1 rounded-md font-bold text-xs">مفتوحة</span> 
+                            : <span className="bg-muted text-muted-foreground px-2 py-1 rounded-md font-bold text-xs">مغلقة</span>}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button 
+                            onClick={() => handleViewShift(shift)}
+                            className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            التفاصيل
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              <div className="bg-muted/20 p-8 rounded-3xl border border-border">
-                <div className="flex items-center gap-4 mb-6 border-b border-border pb-6">
-                  <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-                    <Lock className="w-8 h-8 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-foreground">الوردية الحالية مفتوحة</h3>
-                    <p className="text-muted-foreground text-sm font-medium">بدأت في: {new Date(activeShift.opened_at!).toLocaleString('ar-EG')}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 mb-8 text-center">
-                  <div className="p-6 bg-background rounded-2xl border border-border shadow-sm">
-                    <p className="text-muted-foreground font-medium mb-2">العهدة الافتتاحية</p>
-                    <p className="text-3xl font-black">{activeShift.opening_cash} ج.م</p>
-                  </div>
-                  <div className="p-6 bg-background rounded-2xl border border-border shadow-sm">
-                    <p className="text-muted-foreground font-medium mb-2">إجمالي المتوقع في الدرج</p>
-                    <p className="text-3xl font-black text-primary">{expectedCash} ج.م</p>
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-8">
-                  <h4 className="font-black mb-4 text-destructive flex items-center gap-2 text-lg">
-                    <AlertTriangle className="w-6 h-6" /> إغلاق الوردية (تسليم الدرج)
-                  </h4>
-                  <label className="block text-sm font-bold mb-2">قم بعد النقدية الفعلية في الدرج الآن وأدخلها هنا:</label>
-                  <input 
-                    type="number" 
-                    value={closingCashInput}
-                    onChange={e => setClosingCashInput(Number(e.target.value))}
-                    className="w-full px-4 py-4 bg-background border border-border rounded-xl mb-4 focus:ring-2 focus:ring-destructive outline-none transition-all text-lg font-black"
-                    placeholder="المبلغ الفعلي الموجود..."
-                  />
-                  
-                  {closingCashInput !== '' && (
-                    <div className={`p-4 rounded-xl mb-6 font-bold text-center ${Number(closingCashInput) === expectedCash ? 'bg-emerald-500/10 text-emerald-600' : Number(closingCashInput) < expectedCash ? 'bg-destructive/10 text-destructive' : 'bg-orange-500/10 text-orange-600'}`}>
-                      {Number(closingCashInput) === expectedCash && 'الدرج مظبوط! لا يوجد عجز أو زيادة.'}
-                      {Number(closingCashInput) < expectedCash && `هناك عجز بقيمة: ${expectedCash - Number(closingCashInput)} ج.م`}
-                      {Number(closingCashInput) > expectedCash && `هناك زيادة بقيمة: ${Number(closingCashInput) - expectedCash} ج.م`}
-                    </div>
-                  )}
-
-                  <button onClick={handleCloseShift} className="w-full bg-destructive hover:bg-destructive/90 text-destructive-foreground py-4 rounded-xl font-black transition-colors shadow-md text-lg">
-                    إنهاء وإغلاق الوردية
-                  </button>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -320,7 +301,164 @@ export function Reports() {
             </table>
           </div>
         )}
+
+        {activeTab === 'expenses' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-right">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="py-4 px-4 font-medium">رقم</th>
+                  <th className="py-4 px-4 font-medium">المبلغ</th>
+                  <th className="py-4 px-4 font-medium">الوصف</th>
+                  <th className="py-4 px-4 font-medium">الخزنة</th>
+                  <th className="py-4 px-4 font-medium">المستخدم</th>
+                  <th className="py-4 px-4 font-medium">التاريخ والوقت</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expensesList.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد مصروفات مسجلة</td></tr>}
+                {expensesList.map(exp => (
+                  <tr key={exp.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                    <td className="py-4 px-4 font-black">#{exp.id}</td>
+                    <td className="py-4 px-4 font-bold text-destructive">{exp.amount} ج.م</td>
+                    <td className="py-4 px-4 text-foreground font-medium">{exp.description}</td>
+                    <td className="py-4 px-4 text-sm font-bold">
+                      {exp.capital_id === 1 ? 'البضاعة والجملة' : exp.capital_id === 2 ? 'التحويلات والشحن' : exp.capital_id === 3 ? 'الصيانة والمصنعية' : 'أخرى'}
+                    </td>
+                    <td className="py-4 px-4 text-sm text-muted-foreground">{exp.username || 'غير معروف'}</td>
+                    <td className="py-4 px-4 text-sm text-muted-foreground">{new Date(exp.created_at!).toLocaleString('ar-EG')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Shift Details Modal */}
+      {isShiftModalOpen && selectedShiftDetails && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-border">
+              <h2 className="text-xl font-bold">
+                تفاصيل الوردية #{selectedShiftDetails.shift.id} - الكاشير: {selectedShiftDetails.shift.user_name}
+              </h2>
+              <button onClick={() => setIsShiftModalOpen(false)} className="p-2 hover:bg-muted rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              {/* Stats Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-muted/30 p-4 rounded-xl border border-border text-center">
+                  <p className="text-xs text-muted-foreground font-bold mb-1">عهدة البدء</p>
+                  <p className="text-lg font-black">{selectedShiftDetails.shift.opening_cash} ج.م</p>
+                </div>
+                <div className="bg-blue-500/10 p-4 rounded-xl border border-blue-500/20 text-center text-blue-600 dark:text-blue-400">
+                  <p className="text-xs font-bold mb-1">المتوقع</p>
+                  <p className="text-lg font-black">{selectedShiftDetails.shift.expected_cash ?? '---'}</p>
+                </div>
+                <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20 text-center text-emerald-600 dark:text-emerald-400">
+                  <p className="text-xs font-bold mb-1">الفعلي</p>
+                  <p className="text-lg font-black">{selectedShiftDetails.shift.closing_cash ?? '---'}</p>
+                </div>
+                <div className="bg-muted/30 p-4 rounded-xl border border-border text-center">
+                  <p className="text-xs text-muted-foreground font-bold mb-1">الحالة</p>
+                  <p className="text-lg font-black">{selectedShiftDetails.shift.status === 'open' ? 'مفتوحة' : 'مغلقة'}</p>
+                </div>
+              </div>
+
+              {/* Invoices */}
+              <section>
+                <h3 className="font-bold text-primary mb-3">مبيعات الوردية ({selectedShiftDetails.invoices.length})</h3>
+                {selectedShiftDetails.invoices.length > 0 ? (
+                  <div className="bg-muted/20 border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-right text-sm">
+                      <thead className="bg-muted/50"><tr><th className="p-2">الفاتورة</th><th className="p-2">الوقت</th><th className="p-2">الإجمالي</th><th className="p-2">طريقة الدفع</th></tr></thead>
+                      <tbody>
+                        {selectedShiftDetails.invoices.map((inv: any) => (
+                          <tr key={inv.id} className="border-t border-border">
+                            <td className="p-2">#{inv.id}</td>
+                            <td className="p-2">{new Date(inv.created_at).toLocaleTimeString('ar-EG')}</td>
+                            <td className="p-2 font-bold text-emerald-600">{inv.paid_amount} ج.م</td>
+                            <td className="p-2">{inv.payment_method === 'cash' ? 'كاش' : 'فيزا'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="text-muted-foreground text-sm">لا توجد مبيعات في هذه الوردية.</p>}
+              </section>
+
+              {/* Maintenance */}
+              <section>
+                <h3 className="font-bold text-primary mb-3">صيانة تم تسليمها ({selectedShiftDetails.maintenance.length})</h3>
+                {selectedShiftDetails.maintenance.length > 0 ? (
+                  <div className="bg-muted/20 border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-right text-sm">
+                      <thead className="bg-muted/50"><tr><th className="p-2">رقم</th><th className="p-2">الجهاز</th><th className="p-2">التكلفة النهائية</th></tr></thead>
+                      <tbody>
+                        {selectedShiftDetails.maintenance.map((m: any) => (
+                          <tr key={m.id} className="border-t border-border">
+                            <td className="p-2">#{m.id}</td>
+                            <td className="p-2">{m.device_model}</td>
+                            <td className="p-2 font-bold text-emerald-600">{m.final_cost} ج.م</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="text-muted-foreground text-sm">لا توجد صيانة مُسلّمة.</p>}
+              </section>
+
+              {/* Expenses */}
+              <section>
+                <h3 className="font-bold text-destructive mb-3">المصروفات ({selectedShiftDetails.expenses.length})</h3>
+                {selectedShiftDetails.expenses.length > 0 ? (
+                  <div className="bg-muted/20 border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-right text-sm">
+                      <thead className="bg-muted/50"><tr><th className="p-2">الوقت</th><th className="p-2">الوصف</th><th className="p-2">المبلغ</th></tr></thead>
+                      <tbody>
+                        {selectedShiftDetails.expenses.map((e: any) => (
+                          <tr key={e.id} className="border-t border-border">
+                            <td className="p-2">{new Date(e.created_at).toLocaleTimeString('ar-EG')}</td>
+                            <td className="p-2">{e.description}</td>
+                            <td className="p-2 font-bold text-destructive">{e.amount} ج.م</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="text-muted-foreground text-sm">لا توجد مصروفات.</p>}
+              </section>
+
+              {/* Transfers */}
+              <section>
+                <h3 className="font-bold text-purple-600 dark:text-purple-400 mb-3">تحويلات وشحن ({selectedShiftDetails.transfers.length})</h3>
+                {selectedShiftDetails.transfers.length > 0 ? (
+                  <div className="bg-muted/20 border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-right text-sm">
+                      <thead className="bg-muted/50"><tr><th className="p-2">النوع</th><th className="p-2">الوقت</th><th className="p-2">العمولة/المكسب</th></tr></thead>
+                      <tbody>
+                        {selectedShiftDetails.transfers.map((t: any) => (
+                          <tr key={t.id} className="border-t border-border">
+                            <td className="p-2">{t.type}</td>
+                            <td className="p-2">{new Date(t.created_at).toLocaleTimeString('ar-EG')}</td>
+                            <td className="p-2 font-bold text-purple-600 dark:text-purple-400">{t.commission} ج.م</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="text-muted-foreground text-sm">لا توجد عمليات تحويلات.</p>}
+              </section>
+
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

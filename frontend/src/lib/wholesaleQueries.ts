@@ -1,49 +1,51 @@
 import { getDb } from './db';
 
-// --- Capital Queries ---
+// --- Capital Queries (Goods and Wholesale Capital ID = 1) ---
 export async function getWholesaleCapital() {
   const db = await getDb();
-  const res = await db.select<{ balance: number }[]>('SELECT balance FROM wholesale_capital WHERE id = 1');
+  const res = await db.select<{ balance: number }[]>('SELECT balance FROM capitals WHERE id = 1');
   return res[0]?.balance || 0;
 }
 
 export async function getWholesaleCapitalTransactions() {
   const db = await getDb();
-  return await db.select<any[]>('SELECT t.*, u.username as user_name FROM wholesale_transactions t JOIN users u ON t.user_id = u.id ORDER BY t.created_at DESC');
+  return await db.select<any[]>('SELECT t.*, u.username as user_name FROM capital_transactions t JOIN users u ON t.user_id = u.id WHERE t.capital_id = 1 ORDER BY t.created_at DESC');
 }
 
 export async function addWholesaleCapitalTransaction(userId: number, amount: number, type: 'deposit' | 'withdrawal', description: string) {
   const db = await getDb();
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    await db.execute(
-      'INSERT INTO wholesale_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
-      [userId, amount, type, description]
-    );
+  // Using direct updates
+  await db.execute(
+    'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, $3, $4)',
+    [userId, amount, type, description]
+  );
 
-    const change = type === 'deposit' ? amount : -amount;
-    await db.execute(
-      'UPDATE wholesale_capital SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
-      [change]
-    );
-    await db.execute('COMMIT');
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  const change = type === 'deposit' ? amount : -amount;
+  await db.execute(
+    'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+    [change]
+  );
 }
 
 // --- Merchants Queries ---
-export async function getWholesaleMerchants(type?: 'supplier' | 'client' | 'both') {
+export async function getWholesaleMerchants(type?: 'supplier' | 'client' | 'both', page: number = 1, limit: number = 20) {
   const db = await getDb();
-  let query = 'SELECT * FROM wholesale_merchants';
+  let query = 'SELECT * FROM wholesale_merchants WHERE is_active = 1';
+  let countQuery = 'SELECT COUNT(*) as total FROM wholesale_merchants WHERE is_active = 1';
   const params: any[] = [];
   if (type) {
-    query += ' WHERE type = $1 OR type = "both"';
+    query += ' AND (type = $1 OR type = "both")';
+    countQuery += ' AND (type = $1 OR type = "both")';
     params.push(type);
   }
-  query += ' ORDER BY name ASC';
-  return await db.select<any[]>(query, params);
+  query += ` ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+  
+  const offset = (page - 1) * limit;
+  const totalRes = await db.select<{total: number}[]>(countQuery, params);
+  const total = totalRes[0]?.total || 0;
+
+  const data = await db.select<any[]>(query, [...params, limit, offset]);
+  return { data, total, page, limit };
 }
 
 export async function addWholesaleMerchant(merchant: { name: string, phone: string | null, type: string }) {
@@ -52,6 +54,23 @@ export async function addWholesaleMerchant(merchant: { name: string, phone: stri
     'INSERT INTO wholesale_merchants (name, phone, type) VALUES ($1, $2, $3)',
     [merchant.name, merchant.phone, merchant.type]
   );
+}
+
+export async function updateWholesaleMerchant(id: number, merchant: { name: string, phone: string | null, type: string }) {
+  const db = await getDb();
+  return await db.execute(
+    'UPDATE wholesale_merchants SET name = $1, phone = $2, type = $3 WHERE id = $4',
+    [merchant.name, merchant.phone, merchant.type, id]
+  );
+}
+
+export async function deleteWholesaleMerchant(id: number) {
+  const db = await getDb();
+  const orders = await db.select<{count: number}[]>('SELECT COUNT(*) as count FROM wholesale_orders WHERE merchant_id = $1', [id]);
+  if (orders[0].count > 0) {
+    throw new Error('لا يمكن حذف التاجر لأن لديه فواتير وعمليات مسجلة. (يُفضل تصفية حسابه فقط)');
+  }
+  return await db.execute('UPDATE wholesale_merchants SET is_active = 0 WHERE id = $1', [id]);
 }
 
 export async function updateMerchantBalance(merchantId: number, amount: number) {
@@ -66,8 +85,6 @@ export async function addMerchantPayment(merchantId: number, userId: number, amo
   const db = await getDb();
   await db.execute('BEGIN TRANSACTION');
   try {
-    // If we receive money from client: balance decreases (they owe us less), capital increases (deposit).
-    // If we pay money to supplier: balance increases (we owe them less, negative goes up), capital decreases (withdrawal).
     const balanceChange = paymentType === 'receive' ? -amount : amount;
     const capitalChange = paymentType === 'receive' ? amount : -amount;
 
@@ -77,12 +94,12 @@ export async function addMerchantPayment(merchantId: number, userId: number, amo
     );
 
     await db.execute(
-      'UPDATE wholesale_capital SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+      'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
       [capitalChange]
     );
 
     await db.execute(
-      'INSERT INTO wholesale_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, $3, $4)',
       [userId, amount, paymentType === 'receive' ? 'deposit' : 'withdrawal', paymentType === 'receive' ? `تحصيل دفعة من ديون التاجر #${merchantId}` : `تسديد دفعة لمديونية التاجر #${merchantId}`]
     );
 
@@ -94,31 +111,39 @@ export async function addMerchantPayment(merchantId: number, userId: number, amo
 }
 
 // --- Inventory Queries ---
-export async function getWholesaleInventory(search?: string) {
+export async function getWholesaleInventory(search?: string, page: number = 1, limit: number = 20) {
   const db = await getDb();
-  let query = 'SELECT * FROM wholesale_inventory';
+  let query = 'SELECT * FROM inventory';
+  let countQuery = 'SELECT COUNT(*) as total FROM inventory';
   const params: any[] = [];
   if (search) {
     query += ' WHERE name LIKE $1 OR barcode LIKE $1';
+    countQuery += ' WHERE name LIKE $1 OR barcode LIKE $1';
     params.push(`%${search}%`);
   }
-  query += ' ORDER BY name ASC';
-  return await db.select<any[]>(query, params);
+  query += ` ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+  
+  const offset = (page - 1) * limit;
+  const totalRes = await db.select<{total: number}[]>(countQuery, params);
+  const total = totalRes[0]?.total || 0;
+
+  const data = await db.select<any[]>(query, [...params, limit, offset]);
+  return { data, total, page, limit };
 }
 
-export async function addWholesaleProduct(product: { name: string, barcode: string | null, quantity: number, cost_price: number, wholesale_price: number, min_stock: number }) {
+export async function addWholesaleProduct(product: { category: string, name: string, barcode: string | null, quantity: number, cost_price: number, selling_price: number, retail_price: number, min_stock: number }) {
   const db = await getDb();
   return await db.execute(
-    'INSERT INTO wholesale_inventory (name, barcode, quantity, cost_price, wholesale_price, min_stock) VALUES ($1, $2, $3, $4, $5, $6)',
-    [product.name, product.barcode, product.quantity, product.cost_price, product.wholesale_price, product.min_stock]
+    'INSERT INTO inventory (category, name, barcode, quantity, cost_price, selling_price, retail_price, min_stock) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+    [product.category || 'أخرى', product.name, product.barcode, product.quantity, product.cost_price, product.selling_price, product.retail_price, product.min_stock]
   );
 }
 
-export async function updateWholesaleProduct(id: number, product: { name: string, barcode: string | null, cost_price: number, wholesale_price: number, min_stock: number }) {
+export async function updateWholesaleProduct(id: number, product: { category: string, name: string, barcode: string | null, cost_price: number, selling_price: number, retail_price: number, min_stock: number }) {
   const db = await getDb();
   return await db.execute(
-    'UPDATE wholesale_inventory SET name = $1, barcode = $2, cost_price = $3, wholesale_price = $4, min_stock = $5 WHERE id = $6',
-    [product.name, product.barcode, product.cost_price, product.wholesale_price, product.min_stock, id]
+    'UPDATE inventory SET category = $1, name = $2, barcode = $3, cost_price = $4, selling_price = $5, retail_price = $6, min_stock = $7 WHERE id = $8',
+    [product.category || 'أخرى', product.name, product.barcode, product.cost_price, product.selling_price, product.retail_price, product.min_stock, id]
   );
 }
 
@@ -133,6 +158,7 @@ export async function createWholesaleOrder(
 ) {
   const db = await getDb();
   await db.execute('BEGIN TRANSACTION');
+  
   try {
     // 1. Create Order
     const orderRes = await db.execute(
@@ -144,22 +170,18 @@ export async function createWholesaleOrder(
     // 2. Add Items & Update Inventory
     for (const item of items) {
       await db.execute(
-        'INSERT INTO wholesale_order_items (order_id, wholesale_inventory_id, quantity, unit_price, cost_price) VALUES ($1, $2, $3, $4, $5)',
+        'INSERT INTO wholesale_order_items (order_id, inventory_id, quantity, unit_price, cost_price) VALUES ($1, $2, $3, $4, $5)',
         [orderId, item.id, item.quantity, item.unit_price, item.cost_price]
       );
 
       const qtyChange = type === 'purchase' ? item.quantity : -item.quantity;
       await db.execute(
-        'UPDATE wholesale_inventory SET quantity = quantity + $1 WHERE id = $2',
+        'UPDATE inventory SET quantity = quantity + $1 WHERE id = $2',
         [qtyChange, item.id]
       );
     }
 
     // 3. Update Merchant Balance
-    // If purchase (we buy): total_amount increases what we owe them (negative balance). paid_amount decreases it.
-    // So balance change for supplier = -(total_amount - paid_amount) -> negative means we owe them.
-    // If sale (we sell): total_amount increases what they owe us (positive balance). paid_amount decreases it.
-    // So balance change for client = (total_amount - paid_amount)
     const unpaidAmount = totalAmount - paidAmount;
     const balanceChange = type === 'sale' ? unpaidAmount : -unpaidAmount;
     
@@ -171,18 +193,16 @@ export async function createWholesaleOrder(
     }
 
     // 4. Update Wholesale Capital
-    // If purchase: we paid money out of capital, so capital decreases by paidAmount
-    // If sale: we received money into capital, so capital increases by paidAmount
     if (paidAmount > 0) {
       const capitalChange = type === 'sale' ? paidAmount : -paidAmount;
       await db.execute(
-        'UPDATE wholesale_capital SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+        'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
         [capitalChange]
       );
       
       // Log transaction
       await db.execute(
-        'INSERT INTO wholesale_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
+        'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, $3, $4)',
         [userId, paidAmount, type === 'sale' ? 'deposit' : 'withdrawal', type === 'sale' ? `دفعة من بيع فاتورة #${orderId}` : `دفعة لشراء فاتورة #${orderId}`]
       );
     }
@@ -200,7 +220,7 @@ export async function getWholesaleStats() {
   const db = await getDb();
   
   // Inventory Value
-  const invRes = await db.select<{ total_value: number }[]>('SELECT SUM(quantity * cost_price) as total_value FROM wholesale_inventory');
+  const invRes = await db.select<{ total_value: number }[]>('SELECT SUM(quantity * cost_price) as total_value FROM inventory');
   const inventoryValue = invRes[0]?.total_value || 0;
 
   // Debts
@@ -232,7 +252,7 @@ export async function getWholesaleOrderItems(orderId: number) {
   return await db.select<any[]>(`
     SELECT i.*, p.name as product_name, p.barcode 
     FROM wholesale_order_items i 
-    JOIN wholesale_inventory p ON i.wholesale_inventory_id = p.id 
+    JOIN inventory p ON i.inventory_id = p.id 
     WHERE i.order_id = $1
   `, [orderId]);
 }
