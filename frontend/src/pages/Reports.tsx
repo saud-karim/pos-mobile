@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, FileText, Download, Lock, Unlock, AlertTriangle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getDashboardStats, getRecentInvoices } from '../lib/reportsQueries';
+import { getReportsStats, getRecentInvoices } from '../lib/reportsQueries';
 import { getCurrentShift, openShift, closeShift, calculateExpectedCash, Shift } from '../lib/shiftQueries';
 import { returnInvoice } from '../lib/posQueries';
 import { useAuthStore } from '../store/authStore';
@@ -78,7 +78,7 @@ export function Reports() {
 
   const loadStats = async () => {
     try {
-      const data = await getDashboardStats();
+      const data = await getReportsStats();
       setStats(data);
     } catch (err) {
       console.error(err);

@@ -2,11 +2,13 @@ import { getDb } from './db';
 
 export interface DashboardStats {
   todaySales: number;
+  todayMaintenance: number;
   activeMaintenance: number;
   todayTransfersComm: number;
   lowStockCount: number;
   totalSalesAllTime: number;
   totalProfitAllTime: number;
+  todayPayments: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -17,16 +19,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   today.setHours(0, 0, 0, 0);
   const startOfDay = today.toISOString().replace('T', ' ').substring(0, 19);
 
-  // Today Sales (Invoices + Delivered Maintenance)
+  // Today Sales (Invoices only)
   const salesResult = await db.select<{total: number}[]>(
     `SELECT SUM(total_amount) as total FROM invoices WHERE created_at >= $1`,
     [startOfDay]
   );
+  const todaySales = salesResult[0]?.total || 0;
+
+  // Today Maintenance Income (Net Profit)
   const maintenanceIncomeResult = await db.select<{total: number}[]>(
-    `SELECT SUM(final_cost) as total FROM maintenance WHERE status = 'delivered' AND updated_at >= $1`,
+    `SELECT SUM(final_cost - spare_parts_cost) as total FROM maintenance WHERE status = 'delivered' AND updated_at >= $1`,
     [startOfDay]
   );
-  const todaySales = (salesResult[0]?.total || 0) + (maintenanceIncomeResult[0]?.total || 0);
+  const todayMaintenance = maintenanceIncomeResult[0]?.total || 0;
 
   // Active Maintenance (not delivered/rejected)
   const maintenanceResult = await db.select<{count: number}[]>(
@@ -40,6 +45,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     [startOfDay]
   );
   const todayTransfersComm = transfersResult[0]?.total || 0;
+
+  // Today's Debt Payments
+  const paymentsResult = await db.select<{total: number}[]>(
+    `SELECT SUM(amount) as total FROM customer_payments WHERE created_at >= $1`,
+    [startOfDay]
+  );
+  const todayPayments = paymentsResult[0]?.total || 0;
 
   // Low Stock
   const stockResult = await db.select<{count: number}[]>(
@@ -67,11 +79,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   return {
     todaySales,
+    todayMaintenance,
     activeMaintenance,
     todayTransfersComm,
     lowStockCount,
     totalSalesAllTime,
-    totalProfitAllTime
+    totalProfitAllTime,
+    todayPayments
   };
 }
 

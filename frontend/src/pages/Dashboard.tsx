@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2 } from 'lucide-react';
+import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote } from 'lucide-react';
 import { getDashboardStats, getRecentInvoices, getReadyMaintenance, DashboardStats } from '../lib/dashboardQueries';
 
 export function Dashboard() {
@@ -36,7 +36,9 @@ export function Dashboard() {
   }
 
   const stats = [
-    { title: 'مبيعات اليوم', value: `${statsData?.todaySales || 0} ج.م`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
+    { title: 'مبيعات اليوم (فواتير)', value: `${statsData?.todaySales || 0} ج.م`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
+    { title: 'أرباح الصيانة (اليوم)', value: `${statsData?.todayMaintenance || 0} ج.م`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { title: 'ديون محصلة اليوم', value: `${statsData?.todayPayments || 0} ج.م`, icon: Banknote, color: 'text-teal-500', bg: 'bg-teal-500/10' },
     { title: 'إجمالي المبيعات (تراكمي)', value: `${statsData?.totalSalesAllTime || 0} ج.م`, icon: DollarSign, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { title: 'صافي الربح (تراكمي)', value: `${statsData?.totalProfitAllTime || 0} ج.م`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
     { title: 'أجهزة في الصيانة', value: `${statsData?.activeMaintenance || 0} جهاز`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },

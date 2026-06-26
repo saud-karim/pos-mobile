@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, User, CreditCard, UserPlus, X } from 'lucide-react';
 import { getCustomers, addCustomer, addCustomerPayment, Customer } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
+import { printDebtPaymentReceipt } from '../lib/printUtils';
 import toast from 'react-hot-toast';
 
 export function Customers() {
@@ -44,14 +45,24 @@ export function Customers() {
     }
   };
 
-  const handlePayment = async (customerId: number) => {
+  const handlePayment = async (customer: Customer) => {
     if (!user) return toast.error('يرجى تسجيل الدخول');
     if (!paymentAmount || Number(paymentAmount) <= 0) {
       toast.error('أدخل مبلغاً صحيحاً');
       return;
     }
     try {
-      await addCustomerPayment(customerId, user.id, Number(paymentAmount));
+      await addCustomerPayment(customer.id!, user.id, Number(paymentAmount));
+      
+      printDebtPaymentReceipt({
+        customerName: customer.name,
+        customerPhone: customer.phone || undefined,
+        date: new Date().toLocaleString('ar-EG'),
+        paidAmount: Number(paymentAmount),
+        remainingDebt: customer.credit_balance - Number(paymentAmount),
+        cashierName: user.username,
+      });
+
       toast.success('تم تسديد الدفعة بنجاح وإضافتها للدرج');
       setSelectedCustomerId(null);
       setPaymentAmount('');
@@ -180,7 +191,7 @@ export function Customers() {
                           value={paymentAmount}
                           onChange={e => setPaymentAmount(Number(e.target.value))}
                         />
-                        <button onClick={() => handlePayment(customer.id!)} className="text-primary-foreground bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm">تسديد</button>
+                        <button onClick={() => handlePayment(customer)} className="text-primary-foreground bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm">تسديد</button>
                         <button onClick={() => setSelectedCustomerId(null)} className="text-muted-foreground hover:bg-muted px-3 py-1.5 rounded-lg text-sm font-bold">إلغاء</button>
                       </div>
                     ) : (

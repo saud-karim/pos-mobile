@@ -21,6 +21,15 @@ export interface PrintMaintenanceData {
   estimatedCost: number;
 }
 
+export interface PrintDebtPaymentData {
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  paidAmount: number;
+  remainingDebt: number;
+  cashierName: string;
+}
+
 function getSettings() {
   const saved = localStorage.getItem('pos_settings');
   if (saved) {
@@ -160,6 +169,63 @@ export function printMaintenanceTicket(data: PrintMaintenanceData) {
       <div class="footer">
         <p>يرجى إحضار هذا الإيصال عند الاستلام.</p>
         <p>المحل غير مسؤول عن الجهاز بعد 30 يوم من إبلاغ العميل.</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  executePrint(content);
+}
+
+export function printDebtPaymentReceipt(data: PrintDebtPaymentData) {
+  const settings = getSettings();
+  
+  const content = `
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>إيصال سداد مديونية</title>
+      <style>
+        body { font-family: 'Courier New', Courier, monospace; margin: 0; padding: 10px; width: 80mm; font-size: 12px; color: #000; }
+        .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+        .header h1 { font-size: 18px; margin: 0 0 5px 0; }
+        .header p { margin: 2px 0; font-size: 12px; }
+        .info { margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+        .info div { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        .details { margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+        .details div { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; font-weight: bold; }
+        .footer { text-align: center; font-size: 10px; border-top: 1px dashed #000; padding-top: 10px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>${settings.shopName}</h1>
+        ${settings.phone ? `<p>تليفون: ${settings.phone}</p>` : ''}
+        ${settings.address ? `<p>العنوان: ${settings.address}</p>` : ''}
+      </div>
+
+      <div class="info">
+        <div><span>نوع الإيصال:</span> <span>سداد دفعة (مديونية)</span></div>
+        <div><span>التاريخ:</span> <span>${data.date}</span></div>
+        <div><span>الكاشير:</span> <span>${data.cashierName}</span></div>
+        <div><span>العميل:</span> <span>${data.customerName}</span></div>
+        ${data.customerPhone ? `<div><span>هاتف العميل:</span> <span>${data.customerPhone}</span></div>` : ''}
+      </div>
+
+      <div class="details">
+        <div><span>المبلغ المدفوع:</span> <span>${data.paidAmount} ج.م</span></div>
+        <div>
+          <span>الرصيد المتبقي:</span> 
+          <span>
+            ${data.remainingDebt > 0 ? `عليه ${data.remainingDebt} ج.م` : data.remainingDebt < 0 ? `له ${Math.abs(data.remainingDebt)} ج.م` : 'خالص (0)'}
+          </span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>تم استلام المبلغ نقداً</p>
+        <p>شكراً لتعاملكم معنا</p>
       </div>
     </body>
     </html>
