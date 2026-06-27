@@ -41,23 +41,7 @@ export function WholesaleInventory() {
     loadData();
   }, [search, page]);
 
-  const injectWholesaleTestItems = async () => {
-    try {
-      const testItems = [
-        { name: 'شاحن أصلي (قطعة)', barcode: 'W1001', quantity: 500, cost_price: 50, selling_price: 60, retail_price: 70, min_stock: 20 },
-        { name: 'جراب سيليكون (قطعة)', barcode: 'W1002', quantity: 1000, cost_price: 15, selling_price: 18, retail_price: 25, min_stock: 50 },
-        { name: 'وصلة Type-C (قطعة)', barcode: 'W1003', quantity: 2000, cost_price: 15, selling_price: 17.5, retail_price: 25, min_stock: 100 },
-        { name: 'شاشة آيفون 13 برو', barcode: 'W1004', quantity: 50, cost_price: 1500, selling_price: 1650, retail_price: 1800, min_stock: 5 }
-      ];
-      for (const item of testItems) {
-        await addWholesaleProduct({ ...item, category: 'أخرى' });
-      }
-      toast.success('تمت إضافة الأصناف التجريبية');
-      loadData();
-    } catch (error) {
-      toast.error('حدث خطأ');
-    }
-  };
+
 
   const handleDeleteProduct = async (product: any) => {
     if (!window.confirm(`هل أنت متأكد من حذف الصنف "${product.name}"؟`)) return;
@@ -245,8 +229,8 @@ export function WholesaleInventory() {
                     key={p}
                     onClick={() => setPage(p)}
                     className={`w-10 h-10 rounded-xl font-bold border transition-colors ${page === p
-                        ? 'bg-primary border-primary text-primary-foreground'
-                        : 'bg-card border-border hover:bg-muted text-foreground'
+                      ? 'bg-primary border-primary text-primary-foreground'
+                      : 'bg-card border-border hover:bg-muted text-foreground'
                       }`}
                   >
                     {p}
