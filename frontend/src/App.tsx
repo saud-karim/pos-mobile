@@ -6,6 +6,7 @@ import { Maintenance } from './pages/Maintenance';
 import { POS } from './pages/POS';
 import { Reports } from './pages/Reports';
 import { Customers } from './pages/Customers';
+import { Damages } from './pages/Damages';
 import { initDb } from './lib/db';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from './store/authStore';
@@ -60,6 +61,7 @@ function App() {
         <Route path="pos" element={<POS />} />
         <Route path="customers" element={<Customers />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="damages" element={<Damages />} />
 
         {/* Wholesale Routes */}
         <Route path="wholesale" element={<WholesaleDashboard />} />

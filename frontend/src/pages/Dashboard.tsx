@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote, Calendar, Wallet } from 'lucide-react';
+import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote, Calendar, Wallet, PackageX } from 'lucide-react';
 import { getDashboardStats, getRecentInvoices, getReadyMaintenance, DashboardStats } from '../lib/dashboardQueries';
 
 export function Dashboard() {
@@ -61,7 +61,8 @@ export function Dashboard() {
     { title: 'عمولات تحويلات للفترة', value: `${statsData?.periodTransfersComm || 0} ج.م`, icon: ArrowRightLeft, color: 'text-purple-500', bg: 'bg-purple-500/10' },
     { title: 'ديون محصلة للفترة', value: `${statsData?.periodPayments || 0} ج.م`, icon: Banknote, color: 'text-teal-500', bg: 'bg-teal-500/10' },
     { title: 'أجهزة في الصيانة', value: `${statsData?.activeMaintenance || 0} جهاز`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { title: 'نواقص المخزون', value: `${statsData?.lowStockCount || 0} صنف`, icon: Smartphone, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    { title: 'نواقص المخزون', value: `${statsData?.lowStockCount || 0} صنف`, icon: Smartphone, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    { title: 'خسائر الهوالك', value: `${statsData?.periodDamages || 0} ج.م`, icon: PackageX, color: 'text-rose-500', bg: 'bg-rose-500/10' },
   ];
 
   const getCapitalIcon = (id: number) => {

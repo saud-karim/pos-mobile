@@ -50,7 +50,7 @@ export function WholesaleOrders() {
 
   const loadDependencies = async () => {
     try {
-      const m = await getWholesaleMerchants('both', 1, 1000); // load all for dropdown
+      const m = await getWholesaleMerchants(undefined, 1, 1000); // load all for dropdown
       const i = await getWholesaleInventory('', 1, 1000); // load all for dropdown
       setMerchants(m.data);
       setInventory(i.data);
@@ -333,7 +333,7 @@ export function WholesaleOrders() {
                       setSelectedProductId(e.target.value);
                       const p = inventory.find(i => i.id === Number(e.target.value));
                       if (p) {
-                        setItemPrice(orderType === 'sale' ? p.wholesale_price : p.cost_price);
+                        setItemPrice(orderType === 'sale' ? p.selling_price : p.cost_price);
                         setItemQuantity(1);
                       }
                     }}

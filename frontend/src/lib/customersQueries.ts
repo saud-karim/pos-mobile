@@ -66,35 +66,27 @@ export async function updateCustomerBalance(customerId: number, amountChange: nu
 // Add a payment record
 export async function addCustomerPayment(customerId: number, userId: number, amount: number, customerName: string) {
   const db = await getDb();
-  await db.execute('BEGIN TRANSACTION');
-  try {
-    const custRes = await db.select<{capital_id: number}[]>('SELECT capital_id FROM customers WHERE id = $1', [customerId]);
-    const capitalId = custRes.length > 0 ? custRes[0].capital_id || 1 : 1;
+  const custRes = await db.select<{capital_id: number}[]>('SELECT capital_id FROM customers WHERE id = $1', [customerId]);
+  const capitalId = custRes.length > 0 ? custRes[0].capital_id || 1 : 1;
 
-    // Update customer balance (decrease debt)
-    await updateCustomerBalance(customerId, -amount);
-    
-    // Log payment
-    await db.execute(
-      `INSERT INTO customer_payments (customer_id, user_id, amount) VALUES ($1, $2, $3)`,
-      [customerId, userId, amount]
-    );
+  // Update customer balance (decrease debt)
+  await updateCustomerBalance(customerId, -amount);
+  
+  // Log payment
+  await db.execute(
+    `INSERT INTO customer_payments (customer_id, user_id, amount) VALUES ($1, $2, $3)`,
+    [customerId, userId, amount]
+  );
 
-    // Deposit to capital
-    await db.execute(
-      `UPDATE capitals SET balance = balance + $1 WHERE id = $2`,
-      [amount, capitalId]
-    );
-    await db.execute(
-      `INSERT INTO capital_transactions (capital_id, user_id, type, amount, description) VALUES ($1, $2, 'deposit', $3, $4)`,
-      [capitalId, userId, amount, `تسديد دفعة من العميل ${customerName}`]
-    );
-
-    await db.execute('COMMIT');
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  // Deposit to capital
+  await db.execute(
+    `UPDATE capitals SET balance = balance + $1 WHERE id = $2`,
+    [amount, capitalId]
+  );
+  await db.execute(
+    `INSERT INTO capital_transactions (capital_id, user_id, type, amount, description) VALUES ($1, $2, 'deposit', $3, $4)`,
+    [capitalId, userId, amount, `تسديد دفعة من العميل ${customerName}`]
+  );
 }
 
 export async function deleteCustomer(id: number) {

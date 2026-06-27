@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Store, Plus, Search, Box, AlertCircle, Edit } from 'lucide-react';
-import { getWholesaleInventory, addWholesaleProduct, updateWholesaleProduct } from '../../lib/wholesaleQueries';
+import { Store, Plus, Search, Box, AlertCircle, Edit, Trash2 } from 'lucide-react';
+import { getWholesaleInventory, addWholesaleProduct, updateWholesaleProduct, deleteWholesaleProduct } from '../../lib/wholesaleQueries';
 import toast from 'react-hot-toast';
 
 export function WholesaleInventory() {
@@ -40,6 +40,36 @@ export function WholesaleInventory() {
   useEffect(() => {
     loadData();
   }, [search, page]);
+
+  const injectWholesaleTestItems = async () => {
+    try {
+      const testItems = [
+        { name: 'شاحن أصلي (قطعة)', barcode: 'W1001', quantity: 500, cost_price: 50, selling_price: 60, retail_price: 70, min_stock: 20 },
+        { name: 'جراب سيليكون (قطعة)', barcode: 'W1002', quantity: 1000, cost_price: 15, selling_price: 18, retail_price: 25, min_stock: 50 },
+        { name: 'وصلة Type-C (قطعة)', barcode: 'W1003', quantity: 2000, cost_price: 15, selling_price: 17.5, retail_price: 25, min_stock: 100 },
+        { name: 'شاشة آيفون 13 برو', barcode: 'W1004', quantity: 50, cost_price: 1500, selling_price: 1650, retail_price: 1800, min_stock: 5 }
+      ];
+      for (const item of testItems) {
+        await addWholesaleProduct({ ...item, category: 'أخرى' });
+      }
+      toast.success('تمت إضافة الأصناف التجريبية');
+      loadData();
+    } catch (error) {
+      toast.error('حدث خطأ');
+    }
+  };
+
+  const handleDeleteProduct = async (product: any) => {
+    if (!window.confirm(`هل أنت متأكد من حذف الصنف "${product.name}"؟`)) return;
+    try {
+      await deleteWholesaleProduct(product.id);
+      toast.success('تم الحذف بنجاح');
+      loadData();
+    } catch (error: any) {
+      console.error(error);
+      toast.error('خطأ: ' + (error.message || String(error)));
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditMode(false);
@@ -114,7 +144,7 @@ export function WholesaleInventory() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
             <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input 
+            <input
               type="text"
               placeholder="بحث في المخزن..."
               value={search}
@@ -122,7 +152,7 @@ export function WholesaleInventory() {
               className="w-full pl-4 pr-10 py-2.5 bg-card border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
-          <button 
+          <button
             onClick={handleOpenAdd}
             className="px-4 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold flex items-center gap-2 shrink-0 hover:bg-primary/90 transition-colors"
           >
@@ -175,12 +205,22 @@ export function WholesaleInventory() {
                       <td className="p-4 text-emerald-600 font-bold">{p.retail_price?.toLocaleString() || p.selling_price.toLocaleString()} ج.م</td>
                       <td className="p-4 font-bold">{(p.quantity * p.cost_price).toLocaleString()} ج.م</td>
                       <td className="p-4">
-                        <button 
-                          onClick={() => handleOpenEdit(p)}
-                          className="p-2 text-muted-foreground hover:text-primary transition-colors bg-muted rounded-lg"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => handleOpenEdit(p)}
+                            className="p-2 text-blue-500 hover:bg-blue-500/10 transition-colors bg-muted rounded-lg"
+                            title="تعديل"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(p)}
+                            className="p-2 text-rose-500 hover:bg-rose-500/10 transition-colors bg-muted rounded-lg"
+                            title="حذف"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -192,7 +232,7 @@ export function WholesaleInventory() {
           {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className="p-4 border-t border-border flex items-center justify-center gap-2 bg-muted/20">
-              <button 
+              <button
                 disabled={page === 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
@@ -204,17 +244,16 @@ export function WholesaleInventory() {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className={`w-10 h-10 rounded-xl font-bold border transition-colors ${
-                      page === p 
-                        ? 'bg-primary border-primary text-primary-foreground' 
+                    className={`w-10 h-10 rounded-xl font-bold border transition-colors ${page === p
+                        ? 'bg-primary border-primary text-primary-foreground'
                         : 'bg-card border-border hover:bg-muted text-foreground'
-                    }`}
+                      }`}
                   >
                     {p}
                   </button>
                 ))}
               </div>
-              <button 
+              <button
                 disabled={page === totalPages}
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed font-bold"
@@ -233,11 +272,11 @@ export function WholesaleInventory() {
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-primary">
               <Box className="w-6 h-6" /> {editMode ? 'تعديل صنف' : 'إضافة صنف جديد لمخزن الجملة'}
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="col-span-1 md:col-span-2">
                 <label className="block text-sm font-bold mb-2">اسم الصنف</label>
-                <input 
+                <input
                   type="text"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
@@ -247,7 +286,7 @@ export function WholesaleInventory() {
 
               <div>
                 <label className="block text-sm font-bold mb-2">الباركود (اختياري)</label>
-                <input 
+                <input
                   type="text"
                   value={formData.barcode}
                   onChange={e => setFormData({ ...formData, barcode: e.target.value })}
@@ -257,7 +296,7 @@ export function WholesaleInventory() {
 
               <div>
                 <label className="block text-sm font-bold mb-2">الكمية الابتدائية</label>
-                <input 
+                <input
                   type="number"
                   disabled={editMode}
                   value={formData.quantity}
@@ -269,7 +308,7 @@ export function WholesaleInventory() {
 
               <div>
                 <label className="block text-sm font-bold mb-2">سعر الشراء (التكلفة عليك)</label>
-                <input 
+                <input
                   type="number"
                   value={formData.cost_price}
                   onChange={e => setFormData({ ...formData, cost_price: e.target.value })}
@@ -279,7 +318,7 @@ export function WholesaleInventory() {
 
               <div>
                 <label className="block text-sm font-bold mb-2 text-amber-600">سعر البيع للجملة (للتجار/المحلات)</label>
-                <input 
+                <input
                   type="number"
                   value={formData.selling_price}
                   onChange={e => setFormData({ ...formData, selling_price: e.target.value })}
@@ -289,7 +328,7 @@ export function WholesaleInventory() {
 
               <div>
                 <label className="block text-sm font-bold mb-2 text-emerald-600">سعر البيع القطاعي (للكاشير)</label>
-                <input 
+                <input
                   type="number"
                   value={formData.retail_price}
                   onChange={e => setFormData({ ...formData, retail_price: e.target.value })}
@@ -299,7 +338,7 @@ export function WholesaleInventory() {
 
               <div className="col-span-1 md:col-span-2">
                 <label className="block text-sm font-bold mb-2">حد النواقص التنبيهي</label>
-                <input 
+                <input
                   type="number"
                   value={formData.min_stock}
                   onChange={e => setFormData({ ...formData, min_stock: e.target.value })}

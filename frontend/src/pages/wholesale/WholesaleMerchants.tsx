@@ -26,7 +26,7 @@ export function WholesaleMerchants() {
 
   const loadData = async () => {
     try {
-      const { data, total, limit } = await getWholesaleMerchants('both', page, 20);
+      const { data, total, limit } = await getWholesaleMerchants(undefined, page, 20);
       setMerchants(data);
       setTotalPages(Math.ceil(total / limit) || 1);
     } catch (error) {

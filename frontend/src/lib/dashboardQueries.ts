@@ -8,6 +8,7 @@ export interface DashboardStats {
   lowStockCount: number;
   periodProfit: number;
   periodPayments: number;
+  periodDamages: number;
   capitals: {id: number, name: string, balance: number}[];
 }
 
@@ -76,9 +77,13 @@ export async function getDashboardStats(startDate?: string, endDate?: string): P
     WHERE o.type = 'sale' ${dateCondition ? 'AND o.created_at >= $1 AND o.created_at <= $2' : ''}
   `);
   
-  const periodProfit = (invoiceProfitResult?.profit || 0) + (wholesaleProfitResult?.profit || 0) + periodMaintenance + periodTransfersComm;
+  // 8. Damages
+  const damagesResult = await executeQuery(`SELECT SUM(quantity * cost_price) as total FROM damaged_goods ${dateCondition}`);
+  const periodDamages = damagesResult?.total || 0;
 
-  // 8. Capitals
+  const periodProfit = (invoiceProfitResult?.profit || 0) + (wholesaleProfitResult?.profit || 0) + periodMaintenance + periodTransfersComm - periodDamages;
+
+  // 9. Capitals
   const capitals = await db.select<{id: number, name: string, balance: number}[]>(`SELECT * FROM capitals ORDER BY id ASC`);
 
   return {
@@ -89,6 +94,7 @@ export async function getDashboardStats(startDate?: string, endDate?: string): P
     lowStockCount,
     periodProfit,
     periodPayments,
+    periodDamages,
     capitals
   };
 }

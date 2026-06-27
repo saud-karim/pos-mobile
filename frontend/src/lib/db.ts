@@ -278,6 +278,21 @@ export async function initDb() {
     )
   `);
 
+  // Damaged Goods (الهوالك)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS damaged_goods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      inventory_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      cost_price REAL NOT NULL,
+      reason TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (inventory_id) REFERENCES inventory (id),
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+
   return db;
 }
 
