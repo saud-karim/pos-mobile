@@ -4,7 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { getReportsStats, getRecentInvoices } from '../lib/reportsQueries';
 import { getTodayExpenses, Expense } from '../lib/expensesQueries';
 import { Shift, getShiftsHistory, getShiftTransactions } from '../lib/shiftQueries';
-import { returnInvoice } from '../lib/posQueries';
+import { returnInvoice, getInvoiceItems, returnInvoiceItem } from '../lib/posQueries';
 import { useAuthStore } from '../store/authStore';
 import { exportToExcel } from '../lib/exportUtils';
 import toast from 'react-hot-toast';
@@ -18,6 +18,12 @@ export function Reports() {
   const [shiftsHistory, setShiftsHistory] = useState<(Shift & { user_name: string })[]>([]);
   const [selectedShiftDetails, setSelectedShiftDetails] = useState<any>(null);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  
+  // Partial Return States
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [returnQuantities, setReturnQuantities] = useState<Record<number, number>>({});
 
   useEffect(() => {
     loadStats();
@@ -85,6 +91,40 @@ export function Reports() {
     try {
       await returnInvoice(id, user!.id);
       toast.success('تم إرجاع الفاتورة بنجاح');
+      loadInvoices();
+      loadStats();
+    } catch (err: any) {
+      toast.error('حدث خطأ: ' + err.message);
+    }
+  };
+
+  const handleOpenInvoiceDetails = async (invoice: any) => {
+    try {
+      const items = await getInvoiceItems(invoice.id);
+      setInvoiceItems(items);
+      setSelectedInvoice(invoice);
+      setReturnQuantities({});
+      setIsInvoiceModalOpen(true);
+    } catch (err: any) {
+      toast.error('حدث خطأ في تحميل تفاصيل الفاتورة');
+    }
+  };
+
+  const handleReturnSingleItem = async (itemId: number, quantity: number) => {
+    if (!selectedInvoice) return;
+    if (!quantity || quantity <= 0) return toast.error('أدخل كمية صحيحة');
+    const item = invoiceItems.find(i => i.id === itemId);
+    if (!item) return;
+    if (quantity > item.quantity) return toast.error('الكمية المرتجعة أكبر من المتاحة');
+
+    if (!window.confirm(`هل أنت متأكد من إرجاع عدد ${quantity} من "${item.product_name || 'منتج غير معروف'}"؟`)) return;
+
+    try {
+      await returnInvoiceItem(selectedInvoice.id, itemId, quantity, user!.id);
+      toast.success('تم استرجاع الصنف بنجاح');
+      // Reload items and update totals
+      const updatedItems = await getInvoiceItems(selectedInvoice.id);
+      setInvoiceItems(updatedItems);
       loadInvoices();
       loadStats();
     } catch (err: any) {
@@ -288,12 +328,20 @@ export function Reports() {
                     <td className="py-4 px-4 text-destructive">{inv.discount > 0 ? `-${inv.discount}` : '0'} ج.م</td>
                     <td className="py-4 px-4 text-sm">{inv.cashier_name}</td>
                     <td className="py-4 px-4 text-center">
-                      <button 
-                        onClick={() => handleReturnInvoice(inv.id)}
-                        className="bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground px-4 py-2 rounded-lg font-bold text-sm transition-colors"
-                      >
-                        إرجاع الفاتورة
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => handleOpenInvoiceDetails(inv)}
+                          className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground px-4 py-2 rounded-lg font-bold text-sm transition-colors"
+                        >
+                          التفاصيل والإرجاع
+                        </button>
+                        <button 
+                          onClick={() => handleReturnInvoice(inv.id)}
+                          className="bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground px-4 py-2 rounded-lg font-bold text-sm transition-colors"
+                        >
+                          إرجاع كلي
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -454,6 +502,60 @@ export function Reports() {
                 ) : <p className="text-muted-foreground text-sm">لا توجد عمليات تحويلات.</p>}
               </section>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Details & Partial Return Modal */}
+      {isInvoiceModalOpen && selectedInvoice && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-2xl rounded-2xl shadow-xl border border-border flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-5 border-b border-border bg-muted/30">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" /> تفاصيل فاتورة #{selectedInvoice.id}
+              </h2>
+              <button onClick={() => setIsInvoiceModalOpen(false)} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 flex-1 overflow-y-auto">
+              {invoiceItems.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground font-bold">هذه الفاتورة فارغة تم استرجاع كل محتوياتها</div>
+              ) : (
+                <div className="space-y-4">
+                  {invoiceItems.map((item) => (
+                    <div key={item.id} className="bg-muted/20 border border-border rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="font-bold text-lg mb-1">{item.product_name || 'منتج محذوف'}</h4>
+                        <div className="text-sm text-muted-foreground flex gap-4">
+                          <span>الكمية: <strong className="text-foreground">{item.quantity}</strong></span>
+                          <span>السعر: <strong className="text-foreground">{item.unit_price} ج.م</strong></span>
+                          <span>الإجمالي: <strong className="text-primary">{item.quantity * item.unit_price} ج.م</strong></span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number" 
+                          min="1" 
+                          max={item.quantity}
+                          placeholder="الكمية"
+                          className="w-20 px-3 py-2 border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-background text-center"
+                          value={returnQuantities[item.id] || ''}
+                          onChange={(e) => setReturnQuantities({ ...returnQuantities, [item.id]: Number(e.target.value) })}
+                        />
+                        <button 
+                          onClick={() => handleReturnSingleItem(item.id, returnQuantities[item.id] || item.quantity)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90 px-4 py-2 rounded-lg font-bold text-sm transition-colors"
+                        >
+                          إرجاع
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

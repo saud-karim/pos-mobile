@@ -234,6 +234,70 @@ export function printDebtPaymentReceipt(data: PrintDebtPaymentData) {
   executePrint(content);
 }
 
+export interface PrintCustomerStatementData {
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  creditBalance: number;
+  cashierName: string;
+}
+
+export function printCustomerStatement(data: PrintCustomerStatementData) {
+  const settings = getSettings();
+  
+  const content = `
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>كشف حساب مديونية</title>
+      <style>
+        body { font-family: 'Courier New', Courier, monospace; margin: 0; padding: 10px; width: 80mm; font-size: 12px; color: #000; }
+        .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+        .header h1 { font-size: 18px; margin: 0 0 5px 0; }
+        .header p { margin: 2px 0; font-size: 12px; }
+        .info { margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+        .info div { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        .details { margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+        .details div { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; font-weight: bold; }
+        .footer { text-align: center; font-size: 10px; border-top: 1px dashed #000; padding-top: 10px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>${settings.shopName}</h1>
+        ${settings.phone ? `<p>تليفون: ${settings.phone}</p>` : ''}
+        ${settings.address ? `<p>العنوان: ${settings.address}</p>` : ''}
+      </div>
+
+      <div class="info">
+        <div><span>نوع الإيصال:</span> <span>كشف حساب مديونية</span></div>
+        <div><span>التاريخ:</span> <span>${data.date}</span></div>
+        <div><span>المسؤول:</span> <span>${data.cashierName}</span></div>
+        <div><span>العميل:</span> <span>${data.customerName}</span></div>
+        ${data.customerPhone ? `<div><span>هاتف العميل:</span> <span>${data.customerPhone}</span></div>` : ''}
+      </div>
+
+      <div class="details">
+        <div>
+          <span>الرصيد الحالي:</span> 
+          <span>
+            ${data.creditBalance > 0 ? `عليه ${data.creditBalance} ج.م` : data.creditBalance < 0 ? `له ${Math.abs(data.creditBalance)} ج.م` : 'خالص (0)'}
+          </span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>هذا كشف حساب بالمبلغ الإجمالي المطلوب من العميل حتى تاريخه.</p>
+        <p>شكراً لتعاملكم معنا</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  executePrint(content);
+}
+
 function executePrint(content: string) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'absolute';

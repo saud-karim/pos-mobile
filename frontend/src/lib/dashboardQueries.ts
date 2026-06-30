@@ -124,3 +124,13 @@ export async function getReadyMaintenance() {
      ORDER BY m.updated_at DESC LIMIT 5`
   );
 }
+
+export async function getLowStockItems() {
+  const db = await getDb();
+  return await db.select<any[]>(
+    `SELECT id, name, category, quantity, min_stock 
+     FROM inventory 
+     WHERE quantity <= min_stock 
+     ORDER BY quantity ASC`
+  );
+}

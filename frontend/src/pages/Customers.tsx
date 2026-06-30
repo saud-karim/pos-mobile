@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Search, User, CreditCard, UserPlus, X, Trash2 } from 'lucide-react';
-import { getCustomers, addCustomer, addCustomerPayment, deleteCustomer, Customer } from '../lib/customersQueries';
+import { Search, User, CreditCard, UserPlus, X, Trash2, PlusCircle, Printer } from 'lucide-react';
+import { getCustomers, addCustomer, addCustomerPayment, deleteCustomer, Customer, increaseCustomerDebt } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
-import { printDebtPaymentReceipt } from '../lib/printUtils';
+import { printDebtPaymentReceipt, printCustomerStatement } from '../lib/printUtils';
 import toast from 'react-hot-toast';
 
 export function Customers() {
@@ -17,8 +17,9 @@ export function Customers() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCustomer, setNewCustomer] = useState<Partial<Customer> & { capital_id: number }>({ name: '', phone: '', national_id: '', credit_balance: 0, capital_id: 1 });
 
-  // Payment State
-  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+  // Action State
+  const [actionAmount, setActionAmount] = useState<number | ''>('');
+  const [actionType, setActionType] = useState<'pay' | 'addDebt' | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -49,27 +50,34 @@ export function Customers() {
     }
   };
 
-  const handlePayment = async (customer: Customer) => {
+  const handleAction = async (customer: Customer) => {
     if (!user) return toast.error('يرجى تسجيل الدخول');
-    if (!paymentAmount || Number(paymentAmount) <= 0) {
+    if (!actionAmount || Number(actionAmount) <= 0) {
       toast.error('أدخل مبلغاً صحيحاً');
       return;
     }
     try {
-      await addCustomerPayment(customer.id!, user.id, Number(paymentAmount), customer.name);
-      
-      printDebtPaymentReceipt({
-        customerName: customer.name,
-        customerPhone: customer.phone || undefined,
-        date: new Date().toLocaleString('ar-EG'),
-        paidAmount: Number(paymentAmount),
-        remainingDebt: customer.credit_balance - Number(paymentAmount),
-        cashierName: user.username,
-      });
+      if (actionType === 'pay') {
+        await addCustomerPayment(customer.id!, user.id, Number(actionAmount), customer.name);
+        
+        printDebtPaymentReceipt({
+          customerName: customer.name,
+          customerPhone: customer.phone || undefined,
+          date: new Date().toLocaleString('ar-EG'),
+          paidAmount: Number(actionAmount),
+          remainingDebt: customer.credit_balance - Number(actionAmount),
+          cashierName: user.username,
+        });
 
-      toast.success('تم تسديد الدفعة بنجاح وإضافتها للدرج');
+        toast.success('تم تسديد الدفعة بنجاح وإضافتها للدرج');
+      } else if (actionType === 'addDebt') {
+        await increaseCustomerDebt(customer.id!, user.id, Number(actionAmount), customer.name);
+        toast.success('تم إضافة المديونية بنجاح وخصمها من الدرج');
+      }
+
       setSelectedCustomerId(null);
-      setPaymentAmount('');
+      setActionType(null);
+      setActionAmount('');
       loadCustomers();
     } catch (err: any) {
       toast.error('حدث خطأ: ' + (err.message || String(err)));
@@ -85,6 +93,17 @@ export function Customers() {
     } catch (err: any) {
       toast.error('حدث خطأ أثناء الحذف: ' + (err.message || String(err)));
     }
+  };
+
+  const handlePrintStatement = (customer: Customer) => {
+    if (!user) return toast.error('يرجى تسجيل الدخول');
+    printCustomerStatement({
+      customerName: customer.name,
+      customerPhone: customer.phone || undefined,
+      date: new Date().toLocaleString('ar-EG'),
+      creditBalance: customer.credit_balance,
+      cashierName: user.username,
+    });
   };
 
   return (
@@ -209,31 +228,47 @@ export function Customers() {
                   </td>
                   <td className="py-4 px-4 text-sm text-muted-foreground font-medium">{new Date(customer.created_at!).toLocaleDateString('ar-EG')}</td>
                   <td className="py-4 px-4">
-                    {selectedCustomerId === customer.id ? (
+                    {selectedCustomerId === customer.id && actionType ? (
                       <div className="flex items-center gap-2">
                         <input 
                           type="number" 
-                          placeholder="المبلغ المدفوع" 
+                          placeholder="المبلغ" 
                           className="w-28 px-3 py-1.5 border border-border rounded-lg bg-background text-sm font-bold focus:ring-2 focus:ring-primary outline-none"
-                          value={paymentAmount}
-                          onChange={e => setPaymentAmount(Number(e.target.value))}
+                          value={actionAmount}
+                          onChange={e => setActionAmount(Number(e.target.value))}
                         />
-                        <button onClick={() => handlePayment(customer)} className="text-primary-foreground bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm">تسديد</button>
-                        <button onClick={() => setSelectedCustomerId(null)} className="text-muted-foreground hover:bg-muted px-3 py-1.5 rounded-lg text-sm font-bold">إلغاء</button>
+                        <button onClick={() => handleAction(customer)} className={`text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm ${actionType === 'pay' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                          {actionType === 'pay' ? 'تسديد' : 'إضافة'}
+                        </button>
+                        <button onClick={() => {setSelectedCustomerId(null); setActionType(null);}} className="text-muted-foreground hover:bg-muted px-3 py-1.5 rounded-lg text-sm font-bold">إلغاء</button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
                         <button 
-                          onClick={() => setSelectedCustomerId(customer.id!)}
-                          className="flex items-center gap-2 text-primary bg-primary/10 hover:bg-primary/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                          onClick={() => {setSelectedCustomerId(customer.id!); setActionType('pay');}}
+                          className="flex items-center gap-2 text-emerald-600 bg-emerald-600/10 hover:bg-emerald-600/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
                         >
-                          <CreditCard className="w-4 h-4" /> دفع دفعة
+                          <CreditCard className="w-4 h-4" /> تسديد
+                        </button>
+                        <button 
+                          onClick={() => {setSelectedCustomerId(customer.id!); setActionType('addDebt');}}
+                          className="flex items-center gap-2 text-red-600 bg-red-600/10 hover:bg-red-600/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                        >
+                          <PlusCircle className="w-4 h-4" /> إضافة دين
+                        </button>
+                        <button 
+                          onClick={() => handlePrintStatement(customer)}
+                          className="flex items-center gap-2 text-blue-600 bg-blue-600/10 hover:bg-blue-600/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                          title="طباعة كشف حساب"
+                        >
+                          <Printer className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => handleDelete(customer.id!, customer.name)}
-                          className="flex items-center gap-2 text-destructive bg-destructive/10 hover:bg-destructive/20 px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                          className="flex items-center gap-2 text-muted-foreground hover:bg-muted px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+                          title="حذف"
                         >
-                          <Trash2 className="w-4 h-4" /> حذف
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     )}

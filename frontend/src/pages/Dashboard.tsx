@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote, Calendar, Wallet, PackageX } from 'lucide-react';
-import { getDashboardStats, getRecentInvoices, getReadyMaintenance, DashboardStats } from '../lib/dashboardQueries';
+import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote, Calendar, Wallet, PackageX, AlertTriangle } from 'lucide-react';
+import { getDashboardStats, getRecentInvoices, getReadyMaintenance, getLowStockItems, DashboardStats } from '../lib/dashboardQueries';
 
 export function Dashboard() {
   const [statsData, setStatsData] = useState<DashboardStats | null>(null);
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
   const [readyMaintenance, setReadyMaintenance] = useState<any[]>([]);
+  const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month'); // default last month
 
@@ -41,10 +42,12 @@ export function Dashboard() {
         const stats = await getDashboardStats(startDate, endDate);
         const invoices = await getRecentInvoices();
         const maintenance = await getReadyMaintenance();
+        const lowStock = await getLowStockItems();
 
         setStatsData(stats);
         setRecentInvoices(invoices);
         setReadyMaintenance(maintenance);
+        setLowStockItems(lowStock);
       } catch (error) {
         console.error("Failed to load dashboard data:", error);
       } finally {
@@ -55,11 +58,11 @@ export function Dashboard() {
   }, [period]);
 
   const stats = [
-    { title: 'المبيعات للفترة', value: `${statsData?.periodSales || 0} ج.م`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
-    { title: 'أرباح الصيانة للفترة', value: `${statsData?.periodMaintenance || 0} ج.م`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { title: 'صافي الربح للفترة', value: `${statsData?.periodProfit || 0} ج.م`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-    { title: 'عمولات تحويلات للفترة', value: `${statsData?.periodTransfersComm || 0} ج.م`, icon: ArrowRightLeft, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-    { title: 'ديون محصلة للفترة', value: `${statsData?.periodPayments || 0} ج.م`, icon: Banknote, color: 'text-teal-500', bg: 'bg-teal-500/10' },
+    { title: 'المبيعات', value: `${statsData?.periodSales || 0} ج.م`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
+    { title: 'أرباح الصيانة', value: `${statsData?.periodMaintenance || 0} ج.م`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { title: 'صافي الربح', value: `${statsData?.periodProfit || 0} ج.م`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { title: 'عمولات تحويلات', value: `${statsData?.periodTransfersComm || 0} ج.م`, icon: ArrowRightLeft, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+    { title: 'ديون محصلة', value: `${statsData?.periodPayments || 0} ج.م`, icon: Banknote, color: 'text-teal-500', bg: 'bg-teal-500/10' },
     { title: 'أجهزة في الصيانة', value: `${statsData?.activeMaintenance || 0} جهاز`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { title: 'نواقص المخزون', value: `${statsData?.lowStockCount || 0} صنف`, icon: Smartphone, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { title: 'خسائر الهوالك', value: `${statsData?.periodDamages || 0} ج.م`, icon: PackageX, color: 'text-rose-500', bg: 'bg-rose-500/10' },
@@ -139,7 +142,7 @@ export function Dashboard() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-[var(--card)] p-6 rounded-xl border border-[var(--border)] shadow-sm">
               <h3 className="text-lg font-semibold mb-4">أحدث المبيعات</h3>
               <div className="overflow-x-auto">
@@ -195,6 +198,40 @@ export function Dashboard() {
                           <td className="py-3 px-2">{m.device_model}</td>
                           <td className="py-3 px-2 text-sm">{m.customer_name} ({m.phone})</td>
                           <td className="py-3 px-2 font-bold text-emerald-600">{m.final_cost} ج.م</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-[var(--card)] p-6 rounded-xl border border-rose-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-2 h-full bg-rose-500"></div>
+              <h3 className="text-lg font-semibold mb-4 text-rose-600 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" /> تنبيهات النواقص
+              </h3>
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <table className="w-full text-right">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground sticky top-0 bg-card">
+                      <th className="py-2 px-2 font-medium">الصنف</th>
+                      <th className="py-2 px-2 font-medium">المتاح</th>
+                      <th className="py-2 px-2 font-medium">الحد</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lowStockItems.length === 0 ? (
+                      <tr><td colSpan={3} className="text-center py-4 text-emerald-600 font-bold">لا يوجد أي نواقص! المخزن ممتلئ</td></tr>
+                    ) : (
+                      lowStockItems.map(item => (
+                        <tr key={item.id} className="border-b border-border hover:bg-rose-500/5 transition-colors">
+                          <td className="py-3 px-2 font-bold flex items-center gap-2">
+                            {item.quantity === 0 && <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>}
+                            {item.name}
+                          </td>
+                          <td className="py-3 px-2 font-black text-rose-600">{item.quantity}</td>
+                          <td className="py-3 px-2 text-sm text-muted-foreground">{item.min_stock}</td>
                         </tr>
                       ))
                     )}

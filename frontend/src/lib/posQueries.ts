@@ -177,3 +177,79 @@ export async function getPosQuickItems() {
      ORDER BY id DESC LIMIT 100`
   );
 }
+
+export async function getInvoiceItems(invoiceId: number) {
+  const db = await getDb();
+  return await db.select<any[]>(`
+    SELECT ii.*, i.name as product_name
+    FROM invoice_items ii
+    LEFT JOIN inventory i ON ii.inventory_id = i.id
+    WHERE ii.invoice_id = $1
+  `, [invoiceId]);
+}
+
+export async function returnInvoiceItem(invoiceId: number, invoiceItemId: number, quantityToReturn: number, userId: number) {
+  const db = await getDb();
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    const itemResult = await db.select<any[]>(`SELECT * FROM invoice_items WHERE id = $1`, [invoiceItemId]);
+    if (itemResult.length === 0) throw new Error('المنتج غير موجود في الفاتورة');
+    const item = itemResult[0];
+
+    if (quantityToReturn > item.quantity || quantityToReturn <= 0) throw new Error('الكمية غير صحيحة');
+
+    const invoiceResult = await db.select<any[]>(`SELECT * FROM invoices WHERE id = $1`, [invoiceId]);
+    const invoice = invoiceResult[0];
+
+    const refundAmount = item.unit_price * quantityToReturn;
+
+    let newTotal = invoice.total_amount - refundAmount;
+    let finalTotalBeforeRefund = invoice.total_amount - invoice.discount;
+    let debtBeforeRefund = finalTotalBeforeRefund - invoice.paid_amount;
+    
+    let cashRefund = 0;
+    let debtReduction = 0;
+
+    if (debtBeforeRefund > 0) {
+      if (refundAmount <= debtBeforeRefund) {
+        debtReduction = refundAmount;
+      } else {
+        debtReduction = debtBeforeRefund;
+        cashRefund = refundAmount - debtBeforeRefund;
+      }
+    } else {
+      cashRefund = refundAmount;
+    }
+
+    let newPaidAmount = invoice.paid_amount - cashRefund;
+    
+    await db.execute(`UPDATE invoices SET total_amount = $1, paid_amount = $2 WHERE id = $3`, [newTotal, newPaidAmount, invoiceId]);
+
+    if (debtReduction > 0 && invoice.customer_id) {
+      await db.execute(`UPDATE customers SET credit_balance = credit_balance - $1 WHERE id = $2`, [debtReduction, invoice.customer_id]);
+    }
+
+    if (cashRefund > 0) {
+      await db.execute(`UPDATE capitals SET balance = balance - $1 WHERE id = 1`, [cashRefund]);
+      await db.execute(
+        `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, 'withdrawal', $3)`,
+        [userId, cashRefund, `استرجاع جزئي لفاتورة مبيعات رقم #${invoiceId}`]
+      );
+    }
+
+    if (item.inventory_id) {
+      await db.execute(`UPDATE inventory SET quantity = quantity + $1 WHERE id = $2`, [quantityToReturn, item.inventory_id]);
+    }
+
+    if (item.quantity === quantityToReturn) {
+      await db.execute(`DELETE FROM invoice_items WHERE id = $1`, [invoiceItemId]);
+    } else {
+      await db.execute(`UPDATE invoice_items SET quantity = quantity - $1 WHERE id = $2`, [quantityToReturn, invoiceItemId]);
+    }
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
+}
