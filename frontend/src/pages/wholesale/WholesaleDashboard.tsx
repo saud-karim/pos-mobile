@@ -10,8 +10,6 @@ export function WholesaleDashboard() {
   const [stats, setStats] = useState({ inventoryValue: 0, owedToUs: 0, weOwe: 0 });
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('today');
-
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState<'deposit' | 'withdrawal'>('deposit');
