@@ -117,6 +117,14 @@ export function POS() {
       toast.error('السلة فارغة');
       return;
     }
+    if (discount < 0) {
+      toast.error('الخصم لا يمكن أن يكون بالسالب');
+      return;
+    }
+    if (discount > total) {
+      toast.error('الخصم لا يمكن أن يكون أكبر من الإجمالي الفرعي');
+      return;
+    }
     if (!user) {
       toast.error('يجب تسجيل الدخول أولاً');
       return;
@@ -307,7 +315,11 @@ export function POS() {
               <input
                 type="number"
                 value={discount}
-                onChange={e => setDiscount(Number(e.target.value))}
+                onChange={e => {
+                  let val = Number(e.target.value);
+                  if (val < 0) val = 0;
+                  setDiscount(val);
+                }}
                 className="w-24 text-center border border-border rounded-lg px-2 py-1 text-destructive font-black bg-background focus:ring-2 focus:ring-destructive outline-none transition-all"
               />
             </div>

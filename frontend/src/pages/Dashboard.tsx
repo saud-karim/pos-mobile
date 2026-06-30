@@ -8,7 +8,7 @@ export function Dashboard() {
   const [readyMaintenance, setReadyMaintenance] = useState<any[]>([]);
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('month'); // default last month
+  const [period, setPeriod] = useState('today'); // default today
 
   useEffect(() => {
     const loadData = async () => {
