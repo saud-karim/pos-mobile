@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مولد أكواد التفعيل - كاشير الموبايل</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Cairo -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <!-- CryptoJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    
+    <!-- Background glow -->
+    <div class="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-blue-600/20 blur-[120px] pointer-events-none"></div>
+    <div class="absolute bottom-[-10%] left-[-5%] w-[400px] h-[400px] rounded-full bg-purple-600/20 blur-[100px] pointer-events-none"></div>
+
+    <div class="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-8 relative z-10">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
+                <i data-lucide="key-round" class="text-white w-8 h-8"></i>
+            </div>
+            <h1 class="text-3xl font-black text-white tracking-tight">مولد أكواد التفعيل</h1>
+            <p class="text-slate-400 mt-2 text-sm">لوحة تحكم المدير لإصدار تراخيص تطبيق الكاشير</p>
+        </div>
+
+        <form id="keygenForm" class="space-y-5">
+            <!-- Hardware ID -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-300 mb-2">بصمة جهاز العميل (Hardware ID)</label>
+                <div class="relative">
+                    <input type="text" id="hwid" required placeholder="أدخل البصمة هنا..." class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl pl-4 pr-11 py-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-left direction-ltr" dir="ltr">
+                    <i data-lucide="monitor" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5"></i>
+                </div>
+            </div>
+
+            <!-- Duration -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-300 mb-2">مدة التفعيل</label>
+                <div class="relative">
+                    <select id="duration" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl pl-4 pr-11 py-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none">
+                        <option value="30">شهر واحد (30 يوم)</option>
+                        <option value="90">3 شهور (90 يوم)</option>
+                        <option value="180">6 شهور (180 يوم)</option>
+                        <option value="365">سنة واحدة (365 يوم)</option>
+                        <option value="lifetime" selected>مدى الحياة (Lifetime)</option>
+                    </select>
+                    <i data-lucide="calendar-clock" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5 pointer-events-none"></i>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 mt-2">
+                <i data-lucide="zap" class="w-5 h-5"></i>
+                توليد الكود
+            </button>
+        </form>
+
+        <!-- Output Section (Hidden by default) -->
+        <div id="resultSection" class="mt-8 pt-6 border-t border-slate-800 hidden animate-[fadeIn_0.3s_ease-out]">
+            <label class="block text-sm font-semibold text-emerald-400 mb-2 flex items-center gap-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i> تم إنشاء الكود بنجاح
+            </label>
+            <div class="bg-slate-900 border border-emerald-500/30 rounded-xl p-1 flex items-center">
+                <input type="text" id="activationCode" readonly class="w-full bg-transparent border-none text-emerald-400 font-mono text-sm px-3 py-2 outline-none text-left" dir="ltr">
+                <button id="copyBtn" class="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-500 p-2.5 rounded-lg transition-colors flex items-center justify-center shrink-0" title="نسخ الكود">
+                    <i data-lucide="copy" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <p id="copyMsg" class="text-emerald-500 text-xs mt-2 text-center opacity-0 transition-opacity">تم نسخ الكود للحافظة!</p>
+        </div>
+
+    </div>
+
+    <!-- Initialization & Logic -->
+    <script>
+        lucide.createIcons();
+
+        // نفس مفتاح التشفير الموجود في التطبيق (يجب ألا يتم تغييره إلا إذا تغير في التطبيق)
+        const SECRET_KEY = "POS_MOBILE_SECRET_KEY_2026";
+
+        const form = document.getElementById('keygenForm');
+        const resultSection = document.getElementById('resultSection');
+        const activationCodeInput = document.getElementById('activationCode');
+        const copyBtn = document.getElementById('copyBtn');
+        const copyMsg = document.getElementById('copyMsg');
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const hwid = document.getElementById('hwid').value.trim();
+            const duration = document.getElementById('duration').value;
+
+            if (!hwid) {
+                alert("برجاء إدخال بصمة الجهاز");
+                return;
+            }
+
+            let expiresAt = null; // Lifetime
+            
+            if (duration !== "lifetime") {
+                const days = parseInt(duration);
+                // حساب تاريخ الانتهاء بالمللي ثانية
+                expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+            }
+
+            const payload = {
+                hwid: hwid,
+                exp: expiresAt
+            };
+
+            try {
+                // تشفير الـ Payload باستخدام CryptoJS (نفس المكتبة المستخدمة في التطبيق)
+                const jsonPayload = JSON.stringify(payload);
+                const encrypted = CryptoJS.AES.encrypt(jsonPayload, SECRET_KEY).toString();
+                
+                activationCodeInput.value = encrypted;
+                resultSection.classList.remove('hidden');
+                
+                // إعادة تعيين رسالة النسخ
+                copyMsg.style.opacity = '0';
+            } catch (err) {
+                alert("حدث خطأ أثناء التشفير.");
+                console.error(err);
+            }
+        });
+
+        copyBtn.addEventListener('click', () => {
+            activationCodeInput.select();
+            activationCodeInput.setSelectionRange(0, 99999); // للموبايل
+            navigator.clipboard.writeText(activationCodeInput.value).then(() => {
+                copyMsg.style.opacity = '1';
+                setTimeout(() => {
+                    copyMsg.style.opacity = '0';
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>
