@@ -18,7 +18,7 @@ interface ActivationState {
   activate: (hwid: string, code: string) => boolean;
 }
 
-export const useActivationStore = create<ActivationState>((set, get) => ({
+export const useActivationStore = create<ActivationState>()((set) => ({
   isActivated: false,
   isChecking: true,
   hardwareId: null,
