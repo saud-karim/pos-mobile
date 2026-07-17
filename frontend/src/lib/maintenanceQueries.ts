@@ -126,3 +126,21 @@ export async function getSpareParts() {
     `SELECT * FROM inventory ORDER BY name ASC`
   );
 }
+
+export async function deleteMaintenanceJob(id: number) {
+  const db = await getDb();
+  
+  // 1. Get parts
+  const parts = await getMaintenanceParts(id);
+  
+  // 2. Restore inventory for each part
+  for (const part of parts) {
+    await db.execute('UPDATE inventory SET quantity = quantity + $1 WHERE id = $2', [part.quantity, part.inventory_id]);
+  }
+  
+  // 3. Delete parts
+  await db.execute('DELETE FROM maintenance_parts WHERE maintenance_id = $1', [id]);
+  
+  // 4. Delete job
+  await db.execute('DELETE FROM maintenance WHERE id = $1', [id]);
+}

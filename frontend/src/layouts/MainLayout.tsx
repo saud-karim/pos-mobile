@@ -142,7 +142,7 @@ export function MainLayout() {
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
               <Smartphone className="w-6 h-6 text-primary" />
             </div>
-            <span className="font-black text-xl text-foreground">كاشير موبايل</span>
+            <span className="font-black text-xl text-foreground">SmartStore</span>
           </div>
           
           <nav className="flex flex-col gap-2 w-full px-4">

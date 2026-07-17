@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X } from 'lucide-react';
 import { CartItem, createInvoice, searchProductsPos, getPosQuickItems, getProductByBarcode, InventoryItem as Product } from '../lib/posQueries';
-import { getCustomers, Customer } from '../lib/customersQueries';
+import { getCustomers, Customer, addCustomerPayment } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { printReceipt } from '../lib/printUtils';
@@ -25,6 +25,10 @@ export function POS() {
   // Payment State
   const [discount, setDiscount] = useState(0);
   const [paidAmount, setPaidAmount] = useState<number | ''>(''); // For partial payments / debt
+
+  // Debt Repayment Modal State
+  const [showDebtModal, setShowDebtModal] = useState(false);
+  const [debtPaymentAmount, setDebtPaymentAmount] = useState<number | ''>('');
 
   const total = cart.reduce((acc, item) => acc + (item.retail_price || item.selling_price) * item.cart_quantity, 0);
   const finalTotal = total - discount;
@@ -112,6 +116,30 @@ export function POS() {
     setCart(cart.filter(c => c.id !== id));
   };
 
+  const handlePayDebt = async () => {
+    if (!selectedCustomer || !user) return;
+    if (!debtPaymentAmount || Number(debtPaymentAmount) <= 0) {
+      toast.error('أدخل مبلغاً صحيحاً');
+      return;
+    }
+    
+    try {
+      const shift = await getCurrentShift(user.id);
+      if (!shift) {
+        toast.error('يجب فتح وردية أولاً من القائمة العلوية');
+        return;
+      }
+      await addCustomerPayment(selectedCustomer.id!, user.id, Number(debtPaymentAmount), selectedCustomer.name);
+      toast.success('تم تسجيل دفعة المديونية بنجاح وإضافتها للدرج');
+      setShowDebtModal(false);
+      setDebtPaymentAmount('');
+      loadCustomers();
+      setSelectedCustomer({ ...selectedCustomer, credit_balance: selectedCustomer.credit_balance - Number(debtPaymentAmount) });
+    } catch (err: any) {
+      toast.error('حدث خطأ أثناء السداد: ' + err.message);
+    }
+  };
+
   const handleCheckout = async (paymentMethod: string) => {
     if (cart.length === 0) {
       toast.error('السلة فارغة');
@@ -130,7 +158,10 @@ export function POS() {
       return;
     }
 
-    const actualPaid = paidAmount === '' ? finalTotal : Number(paidAmount);
+    let actualPaid = paidAmount === '' ? finalTotal : Number(paidAmount);
+    if (paymentMethod === 'credit') {
+      actualPaid = 0; // Fully deferred
+    }
 
     if (actualPaid < finalTotal && !selectedCustomer) {
       toast.error('لا يمكن عمل فاتورة آجلة (دين) بدون اختيار العميل أولاً');
@@ -244,14 +275,29 @@ export function POS() {
           <div className="p-5 border-b border-border flex items-center justify-between bg-muted/30 rounded-t-2xl">
             <div className="flex items-center gap-3">
               <UserPlus className={`w-6 h-6 ${selectedCustomer ? 'text-emerald-500' : 'text-primary'}`} />
-              <span className="font-bold text-base text-foreground">
-                {selectedCustomer ? selectedCustomer.name : 'عميل نقدي (طياري)'}
-              </span>
+              <div className="flex flex-col">
+                <span className="font-bold text-base text-foreground">
+                  {selectedCustomer ? selectedCustomer.name : 'عميل نقدي (طياري)'}
+                </span>
+                {selectedCustomer && selectedCustomer.credit_balance > 0 && (
+                  <span className="text-xs font-black text-destructive mt-1">الديون السابقة: {selectedCustomer.credit_balance} ج.م</span>
+                )}
+                {selectedCustomer && selectedCustomer.credit_balance < 0 && (
+                  <span className="text-xs font-black text-emerald-500 mt-1">رصيد دائن: {Math.abs(selectedCustomer.credit_balance)} ج.م</span>
+                )}
+              </div>
             </div>
             {selectedCustomer ? (
-              <button onClick={() => setSelectedCustomer(null)} className="text-destructive hover:bg-destructive/10 p-1 rounded-md transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedCustomer.credit_balance > 0 && (
+                  <button onClick={() => setShowDebtModal(true)} className="bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 text-xs px-2 py-1.5 rounded-lg font-bold transition-colors">
+                    تسديد ديون
+                  </button>
+                )}
+                <button onClick={() => setSelectedCustomer(null)} className="text-destructive hover:bg-destructive/10 p-1 rounded-md transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             ) : (
               <button onClick={() => setShowCustomerSelect(!showCustomerSelect)} className="text-sm font-bold text-primary hover:underline">
                 تغيير العميل
@@ -348,14 +394,59 @@ export function POS() {
 
           <div className="grid grid-cols-2 gap-4">
             <button onClick={() => handleCheckout('cash')} className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 border-t border-blue-400/30 py-4 rounded-xl font-black transition-all active:scale-95">
-              <Banknote className="w-6 h-6" /> دفع كاش وطباعة
+              <Banknote className="w-6 h-6" /> {Number(paidAmount) < finalTotal && Number(paidAmount) > 0 ? 'كاش جزئي وتسجيل الباقي دين' : 'دفع كاش وطباعة'}
             </button>
             <button onClick={() => handleCheckout('visa')} className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-black transition-colors shadow-md active:scale-95">
-              <CreditCard className="w-6 h-6" /> فيزا / محفظة وطباعة
+              <CreditCard className="w-6 h-6" /> {Number(paidAmount) < finalTotal && Number(paidAmount) > 0 ? 'فيزا جزئي وتسجيل الباقي دين' : 'فيزا / محفظة وطباعة'}
+            </button>
+            <button onClick={() => handleCheckout('credit')} className="col-span-2 flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-black transition-colors shadow-md active:scale-95">
+              <UserPlus className="w-6 h-6" /> تسجيل كدين (آجل بالكامل)
             </button>
           </div>
         </div>
       </div>
+      {/* Debt Modal */}
+      {showDebtModal && selectedCustomer && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl shadow-xl border border-border flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-border bg-orange-500/10">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-orange-600">
+                تسديد ديون سابقة
+              </h2>
+              <button onClick={() => setShowDebtModal(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 flex flex-col gap-4">
+              <div className="bg-muted p-4 rounded-xl text-center">
+                <p className="text-sm font-bold text-muted-foreground mb-1">إجمالي الديون على {selectedCustomer.name}</p>
+                <p className="text-2xl font-black text-destructive">{selectedCustomer.credit_balance} ج.م</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold mb-2">المبلغ المراد سداده الآن</label>
+                <input 
+                  type="number"
+                  value={debtPaymentAmount}
+                  onChange={e => setDebtPaymentAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="مثال: 150"
+                  autoFocus
+                  className="w-full border border-border rounded-xl px-4 py-3 bg-background focus:ring-2 focus:ring-primary outline-none font-bold text-lg text-center"
+                />
+              </div>
+
+              <button 
+                onClick={handlePayDebt}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-lg transition-colors mt-2"
+              >
+                تأكيد الدفع وإضافة للدرج
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

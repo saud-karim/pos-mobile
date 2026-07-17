@@ -139,5 +139,10 @@ export async function getShiftTransactions(userId: number, openedAt: string, clo
     maintParams
   );
 
-  return { invoices, expenses, transfers, maintenance };
+  const payments = await db.select<any[]>(
+    `SELECT * FROM customer_payments WHERE user_id = $1 AND ${timeCondition} ORDER BY created_at DESC`,
+    params
+  );
+
+  return { invoices, expenses, transfers, maintenance, payments };
 }

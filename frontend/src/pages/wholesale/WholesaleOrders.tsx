@@ -35,6 +35,9 @@ export function WholesaleOrders() {
   const [selectedProductId, setSelectedProductId] = useState('');
   const [itemQuantity, setItemQuantity] = useState<number | ''>('');
   const [itemPrice, setItemPrice] = useState<number | ''>('');
+  
+  const [productSearch, setProductSearch] = useState('');
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
 
   const loadData = async () => {
     try {
@@ -83,6 +86,8 @@ export function WholesaleOrders() {
     setSelectedProductId('');
     setItemQuantity('');
     setItemPrice('');
+    setProductSearch('');
+    setShowProductDropdown(false);
     setShowAddModal(true);
   };
 
@@ -102,6 +107,7 @@ export function WholesaleOrders() {
     setSelectedProductId('');
     setItemQuantity('');
     setItemPrice('');
+    setProductSearch('');
   };
 
   const handleRemoveFromCart = (index: number) => {
@@ -327,23 +333,43 @@ export function WholesaleOrders() {
 
                 <div className="mb-4 p-4 bg-muted rounded-xl space-y-3">
                   <label className="block text-sm font-bold text-primary border-b border-border pb-2">إضافة صنف للفاتورة</label>
-                  <select 
-                    value={selectedProductId}
-                    onChange={e => {
-                      setSelectedProductId(e.target.value);
-                      const p = inventory.find(i => i.id === Number(e.target.value));
-                      if (p) {
-                        setItemPrice(orderType === 'sale' ? p.selling_price : p.cost_price);
-                        setItemQuantity(1);
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg outline-none text-sm"
-                  >
-                    <option value="">-- اختر الصنف --</option>
-                    {inventory.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (المتاح: {p.quantity})</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="ابحث عن الصنف..."
+                      value={productSearch}
+                      onChange={e => {
+                        setProductSearch(e.target.value);
+                        setSelectedProductId(''); // reset selection if typing
+                        setShowProductDropdown(true);
+                      }}
+                      onFocus={() => setShowProductDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg outline-none text-sm"
+                    />
+                    {showProductDropdown && (
+                      <div className="absolute top-full right-0 left-0 mt-1 bg-background border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                        {inventory.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).map(p => (
+                          <div 
+                            key={p.id} 
+                            onClick={() => {
+                              setSelectedProductId(p.id.toString());
+                              setProductSearch(p.name);
+                              setShowProductDropdown(false);
+                              setItemPrice(orderType === 'sale' ? p.selling_price : p.cost_price);
+                              setItemQuantity(1);
+                            }}
+                            className="px-3 py-2 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0"
+                          >
+                            {p.name} (المتاح: {p.quantity})
+                          </div>
+                        ))}
+                        {inventory.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                          <div className="px-3 py-2 text-sm text-muted-foreground text-center">لا توجد نتائج</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <label className="text-xs text-muted-foreground">الكمية</label>

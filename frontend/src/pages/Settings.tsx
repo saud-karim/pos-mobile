@@ -77,7 +77,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   };
 
   const [settings, setSettings] = useState({
-    shopName: 'كاشير بوس',
+    shopName: 'SmartStore',
     phone: '',
     address: '',
     policy: 'البضاعة المباعة لا ترد ولا تستبدل إلا في حالة وجود عيب صناعة خلال 14 يوم.',

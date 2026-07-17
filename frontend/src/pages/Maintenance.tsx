@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Wrench, X, Trash2 } from 'lucide-react';
-import { getMaintenanceJobs, addMaintenanceJob, updateMaintenanceStatus, MaintenanceJob, getMaintenanceParts, addMaintenancePart, removeMaintenancePart, MaintenancePart, getSpareParts } from '../lib/maintenanceQueries';
+import { getMaintenanceJobs, addMaintenanceJob, updateMaintenanceStatus, MaintenanceJob, getMaintenanceParts, addMaintenancePart, removeMaintenancePart, MaintenancePart, getSpareParts, deleteMaintenanceJob } from '../lib/maintenanceQueries';
 import { getCustomers } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
 import { printMaintenanceTicket } from '../lib/printUtils';
 import toast from 'react-hot-toast';
+import Swal from 'sweetalert2';
 
 export function Maintenance() {
   const user = useAuthStore(state => state.user);
@@ -160,6 +161,30 @@ export function Maintenance() {
       loadJobs();
     } catch (error) {
       toast.error('حدث خطأ أثناء الحفظ');
+    }
+  };
+
+  const handleDeleteJob = async (job: MaintenanceJob) => {
+    const result = await Swal.fire({
+      title: 'هل أنت متأكد؟',
+      text: 'سيتم حذف هذا الجهاز بشكل نهائي وإرجاع أي قطع غيار مسحوبة تلقائياً إلى المخزن.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#3b82f6',
+      confirmButtonText: 'نعم، احذف',
+      cancelButtonText: 'إلغاء'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await deleteMaintenanceJob(job.id!);
+        toast.success('تم الحذف بنجاح');
+        loadJobs();
+        loadCustomersAndParts();
+      } catch (err: any) {
+        toast.error('حدث خطأ أثناء الحذف: ' + err.message);
+      }
     }
   };
 
@@ -456,6 +481,13 @@ export function Maintenance() {
                       title="طباعة إيصال"
                     >
                       <Wrench className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteJob(job)}
+                      className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-lg transition-colors"
+                      title="حذف الجهاز"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
                 </tr>

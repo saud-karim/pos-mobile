@@ -8,7 +8,7 @@ export async function exportDatabase() {
     
     // Get all tables dynamically
     const tableNamesRes = await db.select<{name: string}[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`);
-    const tables = tableNamesRes.map(t => t.name);
+    const tables = tableNamesRes.map((t: {name: string}) => t.name);
     
     for (const table of tables) {
       backup[table] = await db.select(`SELECT * FROM ${table}`);
@@ -39,7 +39,7 @@ export async function importDatabase(file: File) {
         
         // Get all tables dynamically
         const tableNamesRes = await db.select<{name: string}[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`);
-        const tables = tableNamesRes.map(t => t.name);
+        const tables = tableNamesRes.map((t: {name: string}) => t.name);
 
         // Build dependency graph using foreign keys
         const graph: Record<string, string[]> = {};
