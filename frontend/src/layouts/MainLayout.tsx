@@ -7,7 +7,7 @@ import {
   Sun, Moon, LayoutDashboard, Smartphone, 
   Wrench, ArrowRightLeft, ShoppingCart, 
   Users, FileText, Settings as SettingsIcon, LogOut, Lock, Unlock, AlertCircle, Coins,
-  Package, Store, Truck, FileSpreadsheet, PackageX
+  Package, Store, Truck, FileSpreadsheet, PackageX, ClipboardList
 } from 'lucide-react';
 import { addExpense } from '../lib/expensesQueries';
 import { Settings } from '../pages/Settings';
@@ -121,6 +121,7 @@ export function MainLayout() {
     { name: 'الكاشير', path: '/pos', icon: ShoppingCart },
     { name: 'العملاء والديون', path: '/customers', icon: Users },
     { name: 'الهوالك', path: '/damages', icon: PackageX },
+    { name: 'جرد المخزن', path: '/inventory-audits', icon: ClipboardList },
     { name: 'التقارير', path: '/reports', icon: FileText },
   ];
 

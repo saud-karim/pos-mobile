@@ -292,6 +292,30 @@ export async function initDb() {
       FOREIGN KEY (user_id) REFERENCES users (id)
     )
   `);
+  // --- Inventory Audits (نظام الجرد) ---
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_audits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending', -- pending, completed
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME,
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_audit_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      audit_id INTEGER NOT NULL,
+      inventory_id INTEGER NOT NULL,
+      expected_quantity INTEGER NOT NULL,
+      actual_quantity INTEGER NOT NULL,
+      cost_price REAL NOT NULL,
+      FOREIGN KEY (audit_id) REFERENCES inventory_audits (id),
+      FOREIGN KEY (inventory_id) REFERENCES inventory (id)
+    )
+  `);
 
   return db;
 }
