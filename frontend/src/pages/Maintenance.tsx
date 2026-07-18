@@ -28,6 +28,8 @@ export function Maintenance() {
   const [selectedPartId, setSelectedPartId] = useState('');
   const [laborFee, setLaborFee] = useState<number>(0);
   const [partQuantity, setPartQuantity] = useState<number>(1);
+  const [paidAmount, setPaidAmount] = useState<number | ''>('');
+  const [isAlreadyDelivered, setIsAlreadyDelivered] = useState(false);
 
   const statuses = [
     { id: 'all', label: 'الكل' },
@@ -107,6 +109,8 @@ export function Maintenance() {
   const handleOpenDetails = async (job: MaintenanceJob) => {
     setSelectedJob(job);
     setLaborFee((job.final_cost || 0) - (job.spare_parts_cost || 0));
+    setPaidAmount('');
+    setIsAlreadyDelivered(job.status === 'delivered');
     try {
       const parts = await getMaintenanceParts(job.id!);
       setJobParts(parts);
@@ -150,12 +154,29 @@ export function Maintenance() {
   };
 
   const handleSaveDetails = async () => {
-    if (!selectedJob) return;
+    if (!selectedJob || !user) return;
     try {
       const totalPartsCost = jobParts.reduce((sum, p) => sum + (p.quantity * p.unit_price), 0);
       const finalCost = totalPartsCost + Number(laborFee);
       
-      await updateMaintenanceStatus(selectedJob.id!, selectedJob.status, finalCost, totalPartsCost);
+      let actualPaid = paidAmount === '' ? finalCost : Number(paidAmount);
+
+      if (selectedJob.status === 'delivered') {
+        if (actualPaid < finalCost && !selectedJob.customer_id) {
+          toast.error('لا يمكن تسجيل دين على عميل نقدي. يرجى سداد كامل المبلغ أو ربط الجهاز بعميل مسجل.');
+          return;
+        }
+      }
+      
+      await updateMaintenanceStatus(
+        selectedJob.id!, 
+        selectedJob.status, 
+        user.id,
+        finalCost, 
+        totalPartsCost,
+        actualPaid,
+        selectedJob.customer_id
+      );
       toast.success('تم حفظ التعديلات');
       setShowDetails(false);
       loadJobs();
@@ -261,7 +282,7 @@ export function Maintenance() {
           <div className="bg-card w-full max-w-4xl rounded-2xl shadow-xl border border-border overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-6 border-b border-border bg-muted/30">
               <h3 className="text-xl font-black text-primary flex items-center gap-2">
-                <Wrench className="w-6 h-6" /> تفاصيل وتعديل جهاز صيانة (#{selectedJob.id})
+                <Wrench className="w-6 h-6" /> {isAlreadyDelivered ? `تفاصيل جهاز الصيانة (#${selectedJob.id})` : `تفاصيل وتعديل جهاز صيانة (#${selectedJob.id})`}
               </h3>
               <button type="button" onClick={() => setShowDetails(false)} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground">
                 <X className="w-6 h-6" />
@@ -294,31 +315,33 @@ export function Maintenance() {
 
                 <div>
                   <h4 className="font-bold mb-4 pb-2 border-b border-border">قطع الغيار المسحوبة</h4>
-                  <div className="flex gap-2 mb-4">
-                    <select 
-                      className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm"
-                      value={selectedPartId}
-                      onChange={e => setSelectedPartId(e.target.value)}
-                    >
-                      <option value="">اختر قطعة غيار...</option>
-                      {spareParts.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} - متوفر: {p.stock_quantity}</option>
-                      ))}
-                    </select>
-                    <input 
-                      type="number" min="1" 
-                      className="w-20 px-3 py-2 border border-border rounded-lg bg-background text-sm"
-                      value={partQuantity}
-                      onChange={e => setPartQuantity(Number(e.target.value))}
-                    />
-                    <button 
-                      type="button"
-                      onClick={handleAddPartToJob}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm"
-                    >
-                      إضافة
-                    </button>
-                  </div>
+                  {!isAlreadyDelivered && (
+                    <div className="flex gap-2 mb-4">
+                      <select 
+                        className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                        value={selectedPartId}
+                        onChange={e => setSelectedPartId(e.target.value)}
+                      >
+                        <option value="">اختر قطعة غيار...</option>
+                        {spareParts.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} - متوفر: {p.stock_quantity}</option>
+                        ))}
+                      </select>
+                      <input 
+                        type="number" min="1" 
+                        className="w-20 px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                        value={partQuantity}
+                        onChange={e => setPartQuantity(Number(e.target.value))}
+                      />
+                      <button 
+                        type="button"
+                        onClick={handleAddPartToJob}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm"
+                      >
+                        إضافة
+                      </button>
+                    </div>
+                  )}
 
                   <div className="bg-muted/30 rounded-xl border border-border overflow-hidden">
                     <table className="w-full text-sm text-right">
@@ -338,9 +361,11 @@ export function Maintenance() {
                             <td className="py-2 px-3">{p.quantity}</td>
                             <td className="py-2 px-3">{p.unit_price} ج.م</td>
                             <td className="py-2 px-3">
-                              <button onClick={() => handleRemovePart(p.id!, p.inventory_id, p.quantity)} className="text-red-500 hover:bg-red-50 p-1 rounded-md transition-colors">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {!isAlreadyDelivered && (
+                                <button onClick={() => handleRemovePart(p.id!, p.inventory_id, p.quantity)} className="text-red-500 hover:bg-red-50 p-1 rounded-md transition-colors">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -357,7 +382,8 @@ export function Maintenance() {
                     <div>
                       <label className="block text-sm mb-2 font-medium">حالة الجهاز</label>
                       <select 
-                        className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all"
+                        disabled={isAlreadyDelivered}
+                        className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         value={selectedJob.status}
                         onChange={e => setSelectedJob({...selectedJob, status: e.target.value as any})}
                       >
@@ -371,8 +397,8 @@ export function Maintenance() {
                     <div>
                       <label className="block text-sm mb-2 font-medium">المصنعية / حق التصليح (ج.م)</label>
                       <input 
-                        type="number" min="0"
-                        className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all"
+                        type="number" min="0" disabled={isAlreadyDelivered}
+                        className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         value={laborFee}
                         onChange={e => setLaborFee(Number(e.target.value))}
                       />
@@ -394,6 +420,22 @@ export function Maintenance() {
                         </span>
                       </div>
                     </div>
+
+                    {selectedJob.status === 'delivered' && !isAlreadyDelivered && (
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 animate-in fade-in zoom-in duration-300">
+                        <label className="block text-sm mb-2 font-bold text-amber-700">المبلغ المدفوع (ج.م)</label>
+                        <input 
+                          type="number" min="0" max={jobParts.reduce((sum, p) => sum + (p.quantity * p.unit_price), 0) + laborFee}
+                          className="w-full px-4 py-3 border border-amber-500/30 rounded-xl bg-background focus:ring-2 focus:ring-amber-500 outline-none transition-all font-bold text-lg"
+                          value={paidAmount}
+                          placeholder={`الإجمالي: ${jobParts.reduce((sum, p) => sum + (p.quantity * p.unit_price), 0) + laborFee}`}
+                          onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        />
+                        <p className="text-xs text-amber-600 mt-2 font-bold">
+                          المبلغ المتبقي سيُسجل كدين على حساب العميل.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -401,11 +443,13 @@ export function Maintenance() {
 
             <div className="p-6 border-t border-border bg-muted/30 flex justify-end gap-3">
               <button type="button" onClick={() => setShowDetails(false)} className="px-6 py-3 rounded-xl font-bold hover:bg-muted transition-colors text-foreground">
-                إلغاء
+                {isAlreadyDelivered ? 'إغلاق' : 'إلغاء'}
               </button>
-              <button type="button" onClick={handleSaveDetails} className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 border-t border-blue-400/30 px-8 py-3 rounded-xl font-bold transition-all active:scale-95">
-                حفظ التعديلات
-              </button>
+              {!isAlreadyDelivered && (
+                <button type="button" onClick={handleSaveDetails} className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 border-t border-blue-400/30 px-8 py-3 rounded-xl font-bold transition-all active:scale-95">
+                  حفظ التعديلات
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -473,7 +517,7 @@ export function Maintenance() {
                       onClick={() => handleOpenDetails(job)}
                       className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg font-bold transition-colors text-sm"
                     >
-                      التفاصيل / التعديل
+                      {job.status === 'delivered' ? 'عرض التفاصيل' : 'التفاصيل / التعديل'}
                     </button>
                     <button 
                       onClick={() => handlePrint(job)}

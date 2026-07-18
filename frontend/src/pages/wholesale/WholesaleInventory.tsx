@@ -91,7 +91,8 @@ export function WholesaleInventory() {
           cost_price: Number(formData.cost_price),
           selling_price: Number(formData.selling_price),
           retail_price: Number(formData.retail_price),
-          min_stock: Number(formData.min_stock)
+          min_stock: Number(formData.min_stock),
+          quantity: Number(formData.quantity)
         });
         toast.success('تم التعديل بنجاح');
       } else {
@@ -279,14 +280,12 @@ export function WholesaleInventory() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold mb-2">الكمية الابتدائية</label>
+                <label className="block text-sm font-bold mb-2">الكمية</label>
                 <input
                   type="number"
-                  disabled={editMode}
                   value={formData.quantity}
                   onChange={e => setFormData({ ...formData, quantity: e.target.value })}
-                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                  placeholder={editMode ? "لا يمكن تعديلها من هنا" : ""}
+                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
 

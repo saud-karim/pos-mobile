@@ -44,8 +44,20 @@ export async function getMaintenanceJobs(statusFilter?: string) {
   return await db.select<MaintenanceJob[]>(query, params);
 }
 
-export async function updateMaintenanceStatus(id: number, status: string, finalCost?: number, partsCost?: number) {
+export async function updateMaintenanceStatus(
+  id: number, 
+  status: string, 
+  userId: number,
+  finalCost?: number, 
+  partsCost?: number,
+  paidAmount?: number,
+  customerId?: number | null
+) {
   const db = await getDb();
+
+  // Get current status to prevent duplicate delivery transactions
+  const currentJob = await db.select<{status: string}[]>('SELECT status FROM maintenance WHERE id = $1', [id]);
+  const originalStatus = currentJob.length > 0 ? currentJob[0].status : '';
   
   if (finalCost !== undefined && partsCost !== undefined) {
     const res = await db.execute(
@@ -53,17 +65,31 @@ export async function updateMaintenanceStatus(id: number, status: string, finalC
       [status, finalCost, partsCost, id]
     );
 
-    // If delivered, add to Maintenance Capital (Capital ID = 3)
-    if (status === 'delivered') {
-      await db.execute(
-        `UPDATE capitals SET balance = balance + $1 WHERE id = 3`,
-        [finalCost]
-      );
-      await db.execute(
-        `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) 
-         VALUES (3, 1, $1, 'deposit', $2)`,
-        [finalCost, `أرباح صيانة لجهاز رقم #${id}`] // Using user 1 as fallback for now
-      );
+    // If changing to 'delivered' for the first time
+    if (status === 'delivered' && originalStatus !== 'delivered') {
+      const actualPaid = paidAmount !== undefined ? paidAmount : finalCost;
+      const debt = finalCost - actualPaid;
+
+      // Add to Maintenance Capital (Capital ID = 3)
+      if (actualPaid > 0) {
+        await db.execute(
+          `UPDATE capitals SET balance = balance + $1 WHERE id = 3`,
+          [actualPaid]
+        );
+        await db.execute(
+          `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) 
+           VALUES (3, $1, $2, 'deposit', $3)`,
+          [userId, actualPaid, `مستحقات نقدية من صيانة لجهاز رقم #${id}`]
+        );
+      }
+
+      // Add debt to customer if any
+      if (debt > 0 && customerId) {
+        await db.execute(
+          `UPDATE customers SET credit_balance = credit_balance + $1 WHERE id = $2`,
+          [debt, customerId]
+        );
+      }
     }
     
     return res;

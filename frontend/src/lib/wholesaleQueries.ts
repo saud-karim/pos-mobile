@@ -139,11 +139,11 @@ export async function addWholesaleProduct(product: { category: string, name: str
   );
 }
 
-export async function updateWholesaleProduct(id: number, product: { category: string, name: string, barcode: string | null, cost_price: number, selling_price: number, retail_price: number, min_stock: number }) {
+export async function updateWholesaleProduct(id: number, product: { category: string, name: string, barcode: string | null, cost_price: number, selling_price: number, retail_price: number, min_stock: number, quantity: number }) {
   const db = await getDb();
   return await db.execute(
-    'UPDATE inventory SET category = $1, name = $2, barcode = $3, cost_price = $4, selling_price = $5, retail_price = $6, min_stock = $7 WHERE id = $8',
-    [product.category || 'أخرى', product.name, product.barcode, product.cost_price, product.selling_price, product.retail_price, product.min_stock, id]
+    'UPDATE inventory SET category = $1, name = $2, barcode = $3, cost_price = $4, selling_price = $5, retail_price = $6, min_stock = $7, quantity = $8 WHERE id = $9',
+    [product.category || 'أخرى', product.name, product.barcode, product.cost_price, product.selling_price, product.retail_price, product.min_stock, product.quantity, id]
   );
 }
 
