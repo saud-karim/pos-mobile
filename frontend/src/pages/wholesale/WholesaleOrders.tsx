@@ -310,12 +310,13 @@ export function WholesaleOrders() {
       {showAddModal && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
           <div className="bg-card w-full max-w-4xl p-6 rounded-2xl border border-border shadow-2xl flex flex-col max-h-[90vh]">
-            <h3 className={"text-xl font-bold mb-6 flex items-center gap-2 " + (orderType === 'sale' ? 'text-emerald-600' : 'text-rose-600')}>
+            <h3 className={"text-xl font-bold mb-6 flex items-center gap-2 shrink-0 " + (orderType === 'sale' ? 'text-emerald-600' : 'text-rose-600')}>
               {orderType === 'sale' ? <ArrowUpRight className="w-6 h-6" /> : <ArrowDownRight className="w-6 h-6" />}
               {orderType === 'sale' ? 'إنشاء فاتورة بيع جديدة' : 'إنشاء فاتورة شراء جديدة'}
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="flex-1 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="col-span-1 border-l border-border pl-6">
                 <div className="mb-4">
                   <label className="block text-sm font-bold mb-2">اختر {orderType === 'sale' ? 'العميل (المحل)' : 'المورد'}</label>
@@ -456,8 +457,9 @@ export function WholesaleOrders() {
                 </div>
               </div>
             </div>
+            </div>
 
-            <div className="flex justify-end gap-3 mt-auto pt-4 border-t border-border">
+            <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-border shrink-0 bg-card">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-xl hover:bg-muted font-bold">إلغاء</button>
               <button 
                 onClick={handleSubmitOrder} 

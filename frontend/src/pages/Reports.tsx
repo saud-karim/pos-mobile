@@ -501,6 +501,26 @@ export function Reports() {
                 ) : <p className="text-muted-foreground text-sm">لم يتم تسجيل دفع ديون في هذه الوردية.</p>}
               </section>
 
+              {/* Debt Payments */}
+              <section>
+                <h3 className="font-bold text-orange-600 mb-3">تسديد ديون العملاء ({(selectedShiftDetails.payments || []).length})</h3>
+                {(selectedShiftDetails.payments || []).length > 0 ? (
+                  <div className="bg-muted/20 border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-right text-sm">
+                      <thead className="bg-muted/50"><tr><th className="p-2">الوقت</th><th className="p-2">المبلغ المسدد</th></tr></thead>
+                      <tbody>
+                        {selectedShiftDetails.payments.map((p: any) => (
+                          <tr key={p.id} className="border-t border-border">
+                            <td className="p-2">{new Date(p.created_at).toLocaleTimeString('ar-EG')}</td>
+                            <td className="p-2 font-bold text-emerald-600">{p.amount} ج.م</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <p className="text-muted-foreground text-sm">لم يتم تسجيل دفع ديون في هذه الوردية.</p>}
+              </section>
+
               {/* Transfers */}
               <section>
                 <h3 className="font-bold text-purple-600 dark:text-purple-400 mb-3">تحويلات وشحن ({selectedShiftDetails.transfers.length})</h3>

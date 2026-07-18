@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ShoppingCart, Search, UserPlus, CreditCard, Banknote, Trash2, X } from 'lucide-react';
 import { CartItem, createInvoice, searchProductsPos, getPosQuickItems, getProductByBarcode, InventoryItem as Product } from '../lib/posQueries';
-import { getCustomers, Customer, addCustomerPayment } from '../lib/customersQueries';
+import { getCustomers, Customer, addCustomerPayment, addCustomer } from '../lib/customersQueries';
 import { useAuthStore } from '../store/authStore';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { printReceipt } from '../lib/printUtils';
@@ -29,6 +29,12 @@ export function POS() {
   // Debt Repayment Modal State
   const [showDebtModal, setShowDebtModal] = useState(false);
   const [debtPaymentAmount, setDebtPaymentAmount] = useState<number | ''>('');
+
+  // Add Customer Modal State
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerDebt, setNewCustomerDebt] = useState<number | ''>('');
 
   const total = cart.reduce((acc, item) => acc + (item.retail_price || item.selling_price) * item.cart_quantity, 0);
   const finalTotal = total - discount;
@@ -122,7 +128,7 @@ export function POS() {
       toast.error('أدخل مبلغاً صحيحاً');
       return;
     }
-    
+
     try {
       const shift = await getCurrentShift(user.id);
       if (!shift) {
@@ -137,6 +143,28 @@ export function POS() {
       setSelectedCustomer({ ...selectedCustomer, credit_balance: selectedCustomer.credit_balance - Number(debtPaymentAmount) });
     } catch (err: any) {
       toast.error('حدث خطأ أثناء السداد: ' + err.message);
+    }
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!newCustomerName.trim() || !user) {
+      toast.error('يجب إدخال اسم العميل');
+      return;
+    }
+    try {
+      const debt = Number(newCustomerDebt) || 0;
+      const newId = await addCustomer({ name: newCustomerName, phone: newCustomerPhone, credit_balance: debt, national_id: null }, user.id);
+      
+      toast.success('تمت إضافة العميل بنجاح');
+      setShowAddCustomerModal(false);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+      setNewCustomerDebt('');
+      
+      await loadCustomers();
+      setSelectedCustomer({ id: Number(newId), name: newCustomerName, phone: newCustomerPhone, national_id: null, credit_balance: debt });
+    } catch (err: any) {
+      toast.error('خطأ أثناء إضافة العميل: ' + err.message);
     }
   };
 
@@ -206,6 +234,7 @@ export function POS() {
       setPaidAmount('');
       setSelectedCustomer(null);
       loadQuickItems();
+      loadCustomers();
     } catch (error: any) {
       toast.error('حدث خطأ أثناء الدفع: ' + error.message);
     }
@@ -313,12 +342,22 @@ export function POS() {
                   onClick={() => { setSelectedCustomer(c); setShowCustomerSelect(false); }}
                   className="w-full text-right px-5 py-3 hover:bg-muted border-b border-border transition-colors"
                 >
-                  <div className="font-bold text-sm text-foreground">{c.name}</div>
-                  <div className="text-xs text-muted-foreground">{c.phone || 'بدون هاتف'}</div>
+                  <div className="flex justify-between items-center w-full">
+                    <div>
+                      <div className="font-bold text-sm text-foreground">{c.name}</div>
+                      <div className="text-xs text-muted-foreground">{c.phone || 'بدون هاتف'}</div>
+                    </div>
+                    {c.credit_balance > 0 && (
+                      <span className="text-xs font-bold text-destructive">عليه: {c.credit_balance} ج.م</span>
+                    )}
+                    {c.credit_balance < 0 && (
+                      <span className="text-xs font-bold text-emerald-500">له: {Math.abs(c.credit_balance)} ج.م</span>
+                    )}
+                  </div>
                 </button>
               ))}
               <div className="p-3">
-                <button onClick={() => window.location.hash = '#/customers'} className="w-full text-center font-bold text-primary py-3 hover:bg-primary/10 rounded-xl transition-colors">
+                <button onClick={() => { setShowCustomerSelect(false); setShowAddCustomerModal(true); }} className="w-full text-center font-bold text-primary py-3 hover:bg-primary/10 rounded-xl transition-colors">
                   + إضافة عميل جديد
                 </button>
               </div>
@@ -417,7 +456,7 @@ export function POS() {
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-5 flex flex-col gap-4">
               <div className="bg-muted p-4 rounded-xl text-center">
                 <p className="text-sm font-bold text-muted-foreground mb-1">إجمالي الديون على {selectedCustomer.name}</p>
@@ -426,7 +465,7 @@ export function POS() {
 
               <div>
                 <label className="block text-sm font-bold mb-2">المبلغ المراد سداده الآن</label>
-                <input 
+                <input
                   type="number"
                   value={debtPaymentAmount}
                   onChange={e => setDebtPaymentAmount(e.target.value === '' ? '' : Number(e.target.value))}
@@ -436,11 +475,69 @@ export function POS() {
                 />
               </div>
 
-              <button 
+              <button
                 onClick={handlePayDebt}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-lg transition-colors mt-2"
               >
                 تأكيد الدفع وإضافة للدرج
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Add Customer Modal */}
+      {showAddCustomerModal && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl shadow-xl border border-border flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-border bg-primary/10">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-primary">
+                إضافة عميل سريع
+              </h2>
+              <button onClick={() => setShowAddCustomerModal(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-bold mb-2">اسم العميل *</label>
+                <input 
+                  type="text"
+                  value={newCustomerName}
+                  onChange={e => setNewCustomerName(e.target.value)}
+                  placeholder="مثال: محمد أحمد"
+                  autoFocus
+                  className="w-full border border-border rounded-xl px-4 py-3 bg-background focus:ring-2 focus:ring-primary outline-none font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold mb-2">رقم الهاتف</label>
+                <input 
+                  type="text"
+                  value={newCustomerPhone}
+                  onChange={e => setNewCustomerPhone(e.target.value)}
+                  placeholder="رقم الهاتف (اختياري)"
+                  className="w-full border border-border rounded-xl px-4 py-3 bg-background focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold mb-2">ديون سابقة (إن وجدت)</label>
+                <input 
+                  type="number"
+                  value={newCustomerDebt}
+                  onChange={e => setNewCustomerDebt(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="0"
+                  className="w-full border border-border rounded-xl px-4 py-3 bg-background focus:ring-2 focus:ring-primary outline-none font-bold"
+                />
+              </div>
+
+              <button 
+                onClick={handleCreateCustomer}
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-3 rounded-xl font-bold text-lg transition-colors mt-2"
+              >
+                حفظ واختيار العميل
               </button>
             </div>
           </div>
