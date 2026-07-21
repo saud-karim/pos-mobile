@@ -7,6 +7,7 @@ export interface DashboardStats {
   periodTransfersComm: number;
   lowStockCount: number;
   periodProfit: number;
+  operatingProfit: number;
   periodPayments: number;
   periodDamages: number;
   capitals: {id: number, name: string, balance: number}[];
@@ -66,13 +67,13 @@ export async function getDashboardStats(startDate?: string, endDate?: string): P
   // 7. Profit
   // Retail Profit
   const invoiceProfitResult = await executeQuery(`
-    SELECT SUM(i.total_amount - COALESCE((SELECT SUM(ii.cost_price * ii.quantity) FROM invoice_items ii WHERE ii.invoice_id = i.id), 0)) as profit 
+    SELECT SUM((i.total_amount - i.discount) - COALESCE((SELECT SUM(ii.cost_price * ii.quantity) FROM invoice_items ii WHERE ii.invoice_id = i.id), 0)) as profit 
     FROM invoices i 
     ${dateCondition}
   `);
   // Wholesale Profit
   const wholesaleProfitResult = await executeQuery(`
-    SELECT SUM(o.total_amount - COALESCE((SELECT SUM(oi.cost_price * oi.quantity) FROM wholesale_order_items oi WHERE oi.order_id = o.id), 0)) as profit 
+    SELECT SUM((o.total_amount - o.discount) - COALESCE((SELECT SUM(oi.cost_price * oi.quantity) FROM wholesale_order_items oi WHERE oi.order_id = o.id), 0)) as profit 
     FROM wholesale_orders o 
     WHERE o.type = 'sale' ${dateCondition ? 'AND o.created_at >= $1 AND o.created_at <= $2' : ''}
   `);
@@ -81,7 +82,8 @@ export async function getDashboardStats(startDate?: string, endDate?: string): P
   const damagesResult = await executeQuery(`SELECT SUM(quantity * cost_price) as total FROM damaged_goods ${dateCondition}`);
   const periodDamages = damagesResult?.total || 0;
 
-  const periodProfit = (invoiceProfitResult?.profit || 0) + (wholesaleProfitResult?.profit || 0) + periodMaintenance + periodTransfersComm - periodDamages;
+  const operatingProfit = (invoiceProfitResult?.profit || 0) + (wholesaleProfitResult?.profit || 0) + periodMaintenance + periodTransfersComm;
+  const periodProfit = operatingProfit - periodDamages;
 
   // 9. Capitals
   const capitals = await db.select<{id: number, name: string, balance: number}[]>(`SELECT * FROM capitals ORDER BY id ASC`);
@@ -92,6 +94,7 @@ export async function getDashboardStats(startDate?: string, endDate?: string): P
     activeMaintenance,
     periodTransfersComm,
     lowStockCount,
+    operatingProfit,
     periodProfit,
     periodPayments,
     periodDamages,

@@ -59,13 +59,13 @@ export function Dashboard() {
 
   const stats = [
     { title: 'المبيعات', value: `${statsData?.periodSales || 0} ج.م`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
-    { title: 'أرباح الصيانة', value: `${statsData?.periodMaintenance || 0} ج.م`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { title: 'صافي الربح', value: `${statsData?.periodProfit || 0} ج.م`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { title: 'أرباح التشغيل', value: `${statsData?.operatingProfit || 0} ج.م`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-500/10', subtitle: '(أرباح المبيعات + الصيانة + العمولات)' },
+    { title: 'خسائر الهوالك والجرد', value: `${statsData?.periodDamages || 0} ج.م`, icon: PackageX, color: 'text-rose-500', bg: 'bg-rose-500/10', subtitle: '(تكلفة البضاعة الناقصة والتالفة)' },
+    { title: 'الصافي النهائي', value: `${statsData?.periodProfit || 0} ج.م`, icon: DollarSign, color: 'text-blue-500', bg: 'bg-blue-500/10', subtitle: '(أرباح التشغيل - خسائر الهوالك)' },
     { title: 'عمولات تحويلات', value: `${statsData?.periodTransfersComm || 0} ج.م`, icon: ArrowRightLeft, color: 'text-purple-500', bg: 'bg-purple-500/10' },
     { title: 'ديون محصلة', value: `${statsData?.periodPayments || 0} ج.م`, icon: Banknote, color: 'text-teal-500', bg: 'bg-teal-500/10' },
     { title: 'أجهزة في الصيانة', value: `${statsData?.activeMaintenance || 0} جهاز`, icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { title: 'نواقص المخزون', value: `${statsData?.lowStockCount || 0} صنف`, icon: Smartphone, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-    { title: 'خسائر الهوالك', value: `${statsData?.periodDamages || 0} ج.م`, icon: PackageX, color: 'text-rose-500', bg: 'bg-rose-500/10' },
   ];
 
   const getCapitalIcon = (id: number) => {
@@ -131,12 +131,13 @@ export function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {stats.map((stat, i) => (
               <div key={i} className="bg-[var(--card)] p-6 rounded-xl border border-[var(--border)] flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
-                <div className={`p-4 rounded-lg ${stat.bg} ${stat.color}`}>
+                <div className={`p-4 rounded-lg ${stat.bg} ${stat.color} shrink-0`}>
                   <stat.icon className="w-8 h-8" />
                 </div>
-                <div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{stat.title}</p>
-                  <p className="text-2xl font-bold">{stat.value}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">{stat.title}</p>
+                  <p className="text-2xl font-black mb-1">{stat.value}</p>
+                  {stat.subtitle && <p className="text-[11px] font-bold text-muted-foreground">{stat.subtitle}</p>}
                 </div>
               </div>
             ))}
