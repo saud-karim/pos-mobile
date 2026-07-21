@@ -264,6 +264,12 @@ export async function initDb() {
     )
   `);
 
+  try {
+    await db.execute('ALTER TABLE wholesale_orders ADD COLUMN discount REAL DEFAULT 0');
+  } catch (e) {
+    // Column exists
+  }
+
   // Wholesale Order Items
   await db.execute(`
     CREATE TABLE IF NOT EXISTS wholesale_order_items (

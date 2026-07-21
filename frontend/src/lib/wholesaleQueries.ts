@@ -164,7 +164,8 @@ export async function createWholesaleOrder(
   type: 'purchase' | 'sale',
   items: { id: number, quantity: number, unit_price: number, cost_price: number }[],
   totalAmount: number,
-  paidAmount: number
+  paidAmount: number,
+  discount: number = 0
 ) {
   const db = await getDb();
   await db.execute('BEGIN TRANSACTION');
@@ -172,8 +173,8 @@ export async function createWholesaleOrder(
   try {
     // 1. Create Order
     const orderRes = await db.execute(
-      'INSERT INTO wholesale_orders (merchant_id, user_id, type, total_amount, paid_amount) VALUES ($1, $2, $3, $4, $5)',
-      [merchantId, userId, type, totalAmount, paidAmount]
+      'INSERT INTO wholesale_orders (merchant_id, user_id, type, total_amount, paid_amount, discount) VALUES ($1, $2, $3, $4, $5, $6)',
+      [merchantId, userId, type, totalAmount, paidAmount, discount]
     );
     const orderId = orderRes.lastInsertId;
 
@@ -192,7 +193,7 @@ export async function createWholesaleOrder(
     }
 
     // 3. Update Merchant Balance
-    const unpaidAmount = totalAmount - paidAmount;
+    const unpaidAmount = (totalAmount - discount) - paidAmount;
     const balanceChange = type === 'sale' ? unpaidAmount : -unpaidAmount;
     
     if (unpaidAmount > 0) {
@@ -219,6 +220,43 @@ export async function createWholesaleOrder(
 
     await db.execute('COMMIT');
     return orderId;
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function payWholesaleOrderDebt(orderId: number, merchantId: number, userId: number, amount: number, orderType: 'sale' | 'purchase') {
+  const db = await getDb();
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    // 1. Update order paid_amount
+    await db.execute(
+      'UPDATE wholesale_orders SET paid_amount = paid_amount + $1 WHERE id = $2',
+      [amount, orderId]
+    );
+
+    // 2. Update merchant balance
+    const balanceChange = orderType === 'sale' ? -amount : amount;
+    await db.execute(
+      'UPDATE wholesale_merchants SET balance = balance + $1 WHERE id = $2',
+      [balanceChange, merchantId]
+    );
+
+    // 3. Update capital
+    const capitalChange = orderType === 'sale' ? amount : -amount;
+    await db.execute(
+      'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+      [capitalChange]
+    );
+
+    // 4. Log transaction
+    await db.execute(
+      'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, $3, $4)',
+      [userId, amount, orderType === 'sale' ? 'deposit' : 'withdrawal', orderType === 'sale' ? `سداد متبقي من فاتورة بيع جملة #${orderId}` : `سداد متبقي من فاتورة شراء جملة #${orderId}`]
+    );
+
+    await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');
     throw error;

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { FileSpreadsheet, Search, Eye, Trash2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { FileSpreadsheet, Search, Eye, Trash2, ArrowUpRight, ArrowDownRight, HandCoins, CreditCard } from 'lucide-react';
 import { 
   getWholesaleOrders, 
   getWholesaleOrderItems, 
   createWholesaleOrder, 
   getWholesaleMerchants, 
-  getWholesaleInventory 
+  getWholesaleInventory,
+  payWholesaleOrderDebt
 } from '../../lib/wholesaleQueries';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -31,6 +32,7 @@ export function WholesaleOrders() {
   const [selectedMerchantId, setSelectedMerchantId] = useState('');
   const [merchantSearch, setMerchantSearch] = useState('');
   const [showMerchantDropdown, setShowMerchantDropdown] = useState(false);
+  const [discount, setDiscount] = useState<number | ''>('');
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
   
   const [cart, setCart] = useState<{ product: any, quantity: number, unit_price: number }[]>([]);
@@ -40,6 +42,11 @@ export function WholesaleOrders() {
   
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+
+  // Payment Modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<any>(null);
+  const [orderPaymentAmount, setOrderPaymentAmount] = useState<number | ''>('');
 
   const loadData = async () => {
     try {
@@ -85,6 +92,7 @@ export function WholesaleOrders() {
     setSelectedMerchantId('');
     setMerchantSearch('');
     setShowMerchantDropdown(false);
+    setDiscount('');
     setPaidAmount('');
     setCart([]);
     setSelectedProductId('');
@@ -121,12 +129,13 @@ export function WholesaleOrders() {
   };
 
   const totalAmount = cart.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+  const finalAmount = totalAmount - Number(discount);
 
   const handleSubmitOrder = async () => {
     if (!selectedMerchantId) return toast.error('اختر التاجر/المحل');
     if (cart.length === 0) return toast.error('أضف أصنافاً للفاتورة');
     if (paidAmount === '' || paidAmount < 0) return toast.error('أدخل المبلغ المدفوع بشكل صحيح');
-    if (paidAmount > totalAmount) return toast.error('المبلغ المدفوع أكبر من إجمالي الفاتورة!');
+    if (paidAmount > finalAmount) return toast.error('المبلغ المدفوع أكبر من إجمالي الفاتورة!');
 
     const items = cart.map(item => ({
       id: item.product.id,
@@ -142,7 +151,8 @@ export function WholesaleOrders() {
         orderType,
         items,
         totalAmount,
-        Number(paidAmount)
+        Number(paidAmount),
+        Number(discount)
       );
       toast.success('تم حفظ الفاتورة بنجاح');
       setShowAddModal(false);
@@ -151,6 +161,28 @@ export function WholesaleOrders() {
     } catch (error: any) {
       console.error(error);
       toast.error('خطأ: ' + error.message);
+    }
+  };
+
+  const handlePayOrderDebt = async () => {
+    if (!orderPaymentAmount || orderPaymentAmount <= 0) return toast.error('أدخل مبلغاً صحيحاً');
+    
+    try {
+      await payWholesaleOrderDebt(
+        selectedPaymentOrder.id,
+        selectedPaymentOrder.merchant_id,
+        user!.id,
+        Number(orderPaymentAmount),
+        selectedPaymentOrder.type
+      );
+      toast.success('تم تسديد الدفعة بنجاح');
+      setShowPaymentModal(false);
+      setOrderPaymentAmount('');
+      loadData();
+      loadDependencies();
+    } catch (error: any) {
+      console.error(error);
+      toast.error('حدث خطأ أثناء التسديد: ' + error.message);
     }
   };
 
@@ -206,7 +238,7 @@ export function WholesaleOrders() {
                   <th className="p-4 font-bold">التاريخ</th>
                   <th className="p-4 font-bold">النوع</th>
                   <th className="p-4 font-bold">التاجر / المحل</th>
-                  <th className="p-4 font-bold">الإجمالي</th>
+                  <th className="p-4 font-bold">الإجمالي (بعد الخصم)</th>
                   <th className="p-4 font-bold">المدفوع</th>
                   <th className="p-4 font-bold">المتبقي (آجل)</th>
                   <th className="p-4 font-bold">المستخدم</th>
@@ -229,17 +261,31 @@ export function WholesaleOrders() {
                         </span>
                       </td>
                       <td className="p-4 font-bold">{order.merchant_name}</td>
-                      <td className="p-4 font-bold text-blue-600">{order.total_amount.toLocaleString()} ج.م</td>
+                      <td className="p-4 font-bold text-blue-600">{(order.total_amount - (order.discount || 0)).toLocaleString()} ج.م</td>
                       <td className="p-4 text-emerald-600">{order.paid_amount.toLocaleString()} ج.م</td>
-                      <td className="p-4 text-rose-600">{(order.total_amount - order.paid_amount).toLocaleString()} ج.م</td>
+                      <td className="p-4 text-rose-600">{((order.total_amount - (order.discount || 0)) - order.paid_amount).toLocaleString()} ج.م</td>
                       <td className="p-4">{order.user_name}</td>
-                      <td className="p-4">
+                      <td className="p-4 flex items-center justify-end gap-2">
                         <button 
                           onClick={() => handleOpenView(order)}
                           className="p-2 text-muted-foreground hover:text-primary transition-colors bg-muted rounded-lg"
+                          title="عرض التفاصيل"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+                        {((order.total_amount - (order.discount || 0)) - order.paid_amount) > 0 && (
+                          <button 
+                            onClick={() => {
+                              setSelectedPaymentOrder(order);
+                              setOrderPaymentAmount('');
+                              setShowPaymentModal(true);
+                            }}
+                            className="px-3 py-1.5 flex items-center gap-2 text-emerald-700 hover:bg-emerald-500/20 transition-colors bg-emerald-500/10 rounded-xl text-sm font-bold"
+                          >
+                            <span>تسديد</span>
+                            <CreditCard className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -288,10 +334,14 @@ export function WholesaleOrders() {
               </table>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-blue-500/10 p-4 rounded-xl text-center">
                 <p className="text-xs text-blue-600 font-bold mb-1">الإجمالي</p>
                 <p className="font-black text-blue-700 text-lg">{selectedOrder.total_amount.toLocaleString()} ج.م</p>
+              </div>
+              <div className="bg-rose-500/10 p-4 rounded-xl text-center">
+                <p className="text-xs text-rose-600 font-bold mb-1">الخصم</p>
+                <p className="font-black text-rose-700 text-lg">{(selectedOrder.discount || 0).toLocaleString()} ج.م</p>
               </div>
               <div className="bg-emerald-500/10 p-4 rounded-xl text-center">
                 <p className="text-xs text-emerald-600 font-bold mb-1">المدفوع</p>
@@ -299,7 +349,7 @@ export function WholesaleOrders() {
               </div>
               <div className="bg-rose-500/10 p-4 rounded-xl text-center">
                 <p className="text-xs text-rose-600 font-bold mb-1">المتبقي (آجل)</p>
-                <p className="font-black text-rose-700 text-lg">{(selectedOrder.total_amount - selectedOrder.paid_amount).toLocaleString()} ج.م</p>
+                <p className="font-black text-rose-700 text-lg">{((selectedOrder.total_amount - (selectedOrder.discount || 0)) - selectedOrder.paid_amount).toLocaleString()} ج.م</p>
               </div>
             </div>
 
@@ -433,6 +483,21 @@ export function WholesaleOrders() {
                   <p className="text-2xl font-black text-blue-700">{totalAmount.toLocaleString()} ج.م</p>
                 </div>
 
+                <div className="bg-rose-500/10 p-4 rounded-xl mb-4">
+                  <label className="block text-sm font-bold text-rose-700 mb-2">الخصم (ج.م)</label>
+                  <input 
+                    type="number" min="0" max={totalAmount}
+                    value={discount}
+                    onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-rose-500/10 border border-rose-500/20 text-rose-700 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-bold"
+                  />
+                </div>
+
+                <div className="bg-emerald-500/10 p-4 rounded-xl mb-4">
+                  <label className="block text-sm font-bold text-emerald-700 mb-2">الصافي بعد الخصم</label>
+                  <p className="text-2xl font-black text-emerald-700">{finalAmount.toLocaleString()} ج.م</p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-bold mb-2">المبلغ المدفوع الان</label>
                   <input 
@@ -441,7 +506,7 @@ export function WholesaleOrders() {
                     onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-lg"
                   />
-                  <p className="text-xs text-muted-foreground mt-2">الباقي ({(totalAmount - Number(paidAmount)).toLocaleString()} ج.م) سيتم تسجيله كدين تلقائياً.</p>
+                  <p className="text-xs text-muted-foreground mt-2">الباقي ({(finalAmount - Number(paidAmount)).toLocaleString()} ج.م) سيتم تسجيله كدين تلقائياً.</p>
                 </div>
               </div>
 
@@ -495,6 +560,49 @@ export function WholesaleOrders() {
                 className={"px-8 py-2 rounded-xl font-bold text-white transition-colors " + (orderType === 'sale' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700')}
               >
                 اعتماد وحفظ الفاتورة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedPaymentOrder && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-md p-6 rounded-2xl border border-border shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-primary">
+              <HandCoins className="w-6 h-6" /> 
+              تسديد مبلغ متبقي من الفاتورة #{selectedPaymentOrder.id}
+            </h3>
+            
+            <div className="bg-muted p-4 rounded-xl mb-6">
+              <p className="text-sm mb-2">
+                التاجر: <span className="font-bold">{selectedPaymentOrder.merchant_name}</span>
+              </p>
+              <p className="text-sm">
+                المتبقي للدفع: <span className="font-bold text-rose-600">{((selectedPaymentOrder.total_amount - (selectedPaymentOrder.discount || 0)) - selectedPaymentOrder.paid_amount).toLocaleString()} ج.م</span>
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-bold mb-2">المبلغ المراد سداده الآن (ج.م)</label>
+              <input 
+                type="number"
+                value={orderPaymentAmount}
+                onChange={e => setOrderPaymentAmount(e.target.value ? Number(e.target.value) : '')}
+                placeholder="أدخل المبلغ..."
+                max={((selectedPaymentOrder.total_amount - (selectedPaymentOrder.discount || 0)) - selectedPaymentOrder.paid_amount)}
+                className="w-full px-4 py-3 bg-background border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary font-bold text-lg"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 rounded-xl hover:bg-muted font-bold">إلغاء</button>
+              <button 
+                onClick={handlePayOrderDebt} 
+                className="px-6 py-2 rounded-xl font-bold text-white bg-primary hover:bg-primary/90"
+              >
+                تأكيد التسديد
               </button>
             </div>
           </div>
