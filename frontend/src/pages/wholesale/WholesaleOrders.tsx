@@ -29,6 +29,8 @@ export function WholesaleOrders() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [orderType, setOrderType] = useState<'sale' | 'purchase'>('sale');
   const [selectedMerchantId, setSelectedMerchantId] = useState('');
+  const [merchantSearch, setMerchantSearch] = useState('');
+  const [showMerchantDropdown, setShowMerchantDropdown] = useState(false);
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
   
   const [cart, setCart] = useState<{ product: any, quantity: number, unit_price: number }[]>([]);
@@ -81,6 +83,8 @@ export function WholesaleOrders() {
   const handleOpenAdd = (type: 'sale' | 'purchase') => {
     setOrderType(type);
     setSelectedMerchantId('');
+    setMerchantSearch('');
+    setShowMerchantDropdown(false);
     setPaidAmount('');
     setCart([]);
     setSelectedProductId('');
@@ -320,16 +324,41 @@ export function WholesaleOrders() {
               <div className="col-span-1 border-l border-border pl-6">
                 <div className="mb-4">
                   <label className="block text-sm font-bold mb-2">اختر {orderType === 'sale' ? 'العميل (المحل)' : 'المورد'}</label>
-                  <select 
-                    value={selectedMerchantId}
-                    onChange={e => setSelectedMerchantId(e.target.value)}
-                    className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">-- اختر --</option>
-                    {merchants.filter(m => orderType === 'sale' ? (m.type === 'client' || m.type === 'both') : (m.type === 'supplier' || m.type === 'both')).map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="ابحث عن اسم التاجر/المحل..."
+                      value={merchantSearch}
+                      onChange={e => {
+                        setMerchantSearch(e.target.value);
+                        setSelectedMerchantId(''); 
+                        setShowMerchantDropdown(true);
+                      }}
+                      onFocus={() => setShowMerchantDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowMerchantDropdown(false), 200)}
+                      className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    {showMerchantDropdown && (
+                      <div className="absolute top-full right-0 left-0 mt-1 bg-background border border-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+                        {merchants.filter(m => (orderType === 'sale' ? (m.type === 'client' || m.type === 'both') : (m.type === 'supplier' || m.type === 'both')) && m.name.toLowerCase().includes(merchantSearch.toLowerCase())).map(m => (
+                          <div 
+                            key={m.id} 
+                            onMouseDown={() => {
+                              setSelectedMerchantId(m.id.toString());
+                              setMerchantSearch(m.name);
+                              setShowMerchantDropdown(false);
+                            }}
+                            className="px-4 py-3 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0 font-medium"
+                          >
+                            {m.name}
+                          </div>
+                        ))}
+                        {merchants.filter(m => (orderType === 'sale' ? (m.type === 'client' || m.type === 'both') : (m.type === 'supplier' || m.type === 'both')) && m.name.toLowerCase().includes(merchantSearch.toLowerCase())).length === 0 && (
+                          <div className="px-4 py-3 text-sm text-muted-foreground text-center">لا توجد نتائج</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mb-4 p-4 bg-muted rounded-xl space-y-3">
@@ -353,7 +382,7 @@ export function WholesaleOrders() {
                         {inventory.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).map(p => (
                           <div 
                             key={p.id} 
-                            onClick={() => {
+                            onMouseDown={() => {
                               setSelectedProductId(p.id.toString());
                               setProductSearch(p.name);
                               setShowProductDropdown(false);

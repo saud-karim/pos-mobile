@@ -160,3 +160,66 @@ export async function cancelAudit(auditId: number) {
     throw error;
   }
 }
+
+// 7. Get Audit Statistics
+export async function getAuditStats() {
+  const db = await getDb();
+  
+  // Only look at completed audits
+  const items = await db.select<any[]>(
+    `SELECT ai.expected_quantity, ai.actual_quantity, ai.cost_price, i.name as product_name
+     FROM inventory_audit_items ai
+     JOIN inventory_audits a ON ai.audit_id = a.id
+     JOIN inventory i ON ai.inventory_id = i.id
+     WHERE a.status = 'completed'`
+  );
+
+  let totalLoss = 0;
+  let totalSurplus = 0;
+  
+  const productDiffs: Record<string, number> = {};
+
+  items.forEach(item => {
+    const diff = item.actual_quantity - item.expected_quantity;
+    if (diff < 0) {
+      totalLoss += Math.abs(diff) * item.cost_price;
+    } else if (diff > 0) {
+      totalSurplus += diff * item.cost_price;
+    }
+    
+    if (!productDiffs[item.product_name]) {
+      productDiffs[item.product_name] = 0;
+    }
+    productDiffs[item.product_name] += diff; // Negative means shortage, positive means surplus
+  });
+
+  let worstShortageProduct = "لا يوجد";
+  let worstShortageAmount = 0;
+  
+  let highestSurplusProduct = "لا يوجد";
+  let highestSurplusAmount = 0;
+
+  for (const [product, diff] of Object.entries(productDiffs)) {
+    if (diff < worstShortageAmount) {
+      worstShortageAmount = diff; // This will be negative
+      worstShortageProduct = product;
+    }
+    if (diff > highestSurplusAmount) {
+      highestSurplusAmount = diff;
+      highestSurplusProduct = product;
+    }
+  }
+
+  return {
+    totalLoss,
+    totalSurplus,
+    worstShortage: {
+      product: worstShortageProduct,
+      amount: Math.abs(worstShortageAmount)
+    },
+    highestSurplus: {
+      product: highestSurplusProduct,
+      amount: highestSurplusAmount
+    }
+  };
+}

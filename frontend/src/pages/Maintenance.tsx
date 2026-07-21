@@ -18,6 +18,8 @@ export function Maintenance() {
   const [newJob, setNewJob] = useState<Partial<MaintenanceJob>>({
     device_model: '', issue_description: '', estimated_cost: 0, status: 'pending', customer_id: undefined
   });
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [spareParts, setSpareParts] = useState<any[]>([]);
 
@@ -26,6 +28,8 @@ export function Maintenance() {
   const [selectedJob, setSelectedJob] = useState<MaintenanceJob | null>(null);
   const [jobParts, setJobParts] = useState<MaintenancePart[]>([]);
   const [selectedPartId, setSelectedPartId] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [laborFee, setLaborFee] = useState<number>(0);
   const [partQuantity, setPartQuantity] = useState<number>(1);
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
@@ -88,6 +92,8 @@ export function Maintenance() {
 
       setShowAddForm(false);
       setNewJob({ device_model: '', issue_description: '', estimated_cost: 0, status: 'pending', customer_id: undefined });
+      setCustomerSearch('');
+      setShowCustomerDropdown(false);
       loadJobs();
     } catch (err: any) {
       toast.error('حدث خطأ: ' + err.message);
@@ -133,6 +139,7 @@ export function Maintenance() {
       const parts = await getMaintenanceParts(selectedJob.id!);
       setJobParts(parts);
       setSelectedPartId('');
+      setProductSearch('');
       setPartQuantity(1);
       
       loadCustomersAndParts();
@@ -235,18 +242,48 @@ export function Maintenance() {
             </div>
             
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 relative">
                 <label className="block text-sm mb-2 font-medium">العميل (اختياري)</label>
-                <select 
+                <input 
+                  type="text"
+                  placeholder="ابحث عن اسم أو هاتف العميل..."
+                  value={customerSearch}
+                  onChange={e => {
+                    setCustomerSearch(e.target.value);
+                    setNewJob({...newJob, customer_id: undefined}); 
+                    setShowCustomerDropdown(true);
+                  }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
                   className="w-full px-4 py-3 border border-border rounded-xl bg-background focus:ring-2 focus:ring-primary outline-none transition-all"
-                  value={newJob.customer_id || ''}
-                  onChange={e => setNewJob({...newJob, customer_id: e.target.value ? Number(e.target.value) : undefined})}
-                >
-                  <option value="">عميل نقدي (بدون تسجيل)</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} {c.phone ? `(${c.phone})` : ''}</option>
-                  ))}
-                </select>
+                />
+                {showCustomerDropdown && (
+                  <div className="absolute top-full right-0 left-0 mt-1 bg-background border border-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+                    <div 
+                      onMouseDown={() => {
+                        setNewJob({...newJob, customer_id: undefined});
+                        setCustomerSearch('عميل نقدي (بدون تسجيل)');
+                        setShowCustomerDropdown(false);
+                      }}
+                      className="px-4 py-3 hover:bg-muted cursor-pointer text-sm border-b border-border font-bold text-muted-foreground"
+                    >
+                      عميل نقدي (بدون تسجيل)
+                    </div>
+                    {customers.filter(c => (c.name || '').toLowerCase().includes(customerSearch.toLowerCase()) || (c.phone || '').includes(customerSearch)).map(c => (
+                      <div 
+                        key={c.id} 
+                        onMouseDown={() => {
+                          setNewJob({...newJob, customer_id: c.id});
+                          setCustomerSearch(`${c.name} ${c.phone ? `(${c.phone})` : ''}`);
+                          setShowCustomerDropdown(false);
+                        }}
+                        className="px-4 py-3 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0 font-medium"
+                      >
+                        {c.name} {c.phone ? <span className="text-muted-foreground mr-2">({c.phone})</span> : ''}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm mb-2 font-medium">موديل الجهاز</label>
@@ -316,29 +353,63 @@ export function Maintenance() {
                 <div>
                   <h4 className="font-bold mb-4 pb-2 border-b border-border">قطع الغيار المسحوبة</h4>
                   {!isAlreadyDelivered && (
-                    <div className="flex gap-2 mb-4">
-                      <select 
-                        className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm"
-                        value={selectedPartId}
-                        onChange={e => setSelectedPartId(e.target.value)}
-                      >
-                        <option value="">اختر قطعة غيار...</option>
-                        {spareParts.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} - متوفر: {p.stock_quantity}</option>
-                        ))}
-                      </select>
-                      <input 
-                        type="number" min="1" 
-                        className="w-20 px-3 py-2 border border-border rounded-lg bg-background text-sm"
-                        value={partQuantity}
-                        onChange={e => setPartQuantity(Number(e.target.value))}
-                      />
+                    <div className="mb-4 p-4 bg-muted rounded-xl space-y-3">
+                      <label className="block text-sm font-bold text-primary border-b border-border pb-2">إضافة قطعة غيار</label>
+                      <div className="relative">
+                        <input 
+                          type="text"
+                          placeholder="ابحث عن قطعة غيار..."
+                          value={productSearch}
+                          onChange={e => {
+                            setProductSearch(e.target.value);
+                            setSelectedPartId(''); 
+                            setShowProductDropdown(true);
+                          }}
+                          onFocus={() => setShowProductDropdown(true)}
+                          onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
+                          className="w-full px-3 py-2 bg-background border border-border rounded-lg outline-none text-sm"
+                        />
+                        {showProductDropdown && (
+                          <div className="absolute top-full right-0 left-0 mt-1 bg-background border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                            {spareParts.filter(p => (p.name || '').toLowerCase().includes(productSearch.toLowerCase())).map(p => (
+                              <div 
+                                key={p.id} 
+                                onMouseDown={() => {
+                                  setSelectedPartId(p.id.toString());
+                                  setProductSearch(p.name);
+                                  setShowProductDropdown(false);
+                                  setPartQuantity(1);
+                                }}
+                                className="px-3 py-2 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0"
+                              >
+                                {p.name} (المتاح: {p.stock_quantity})
+                              </div>
+                            ))}
+                            {spareParts.filter(p => (p.name || '').toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                              <div className="px-3 py-2 text-sm text-muted-foreground text-center">لا توجد نتائج</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground mb-1 block">الكمية</label>
+                          <input 
+                            type="number" min="1" 
+                            className="w-full px-3 py-2 bg-background border border-border rounded-lg outline-none text-sm"
+                            value={partQuantity}
+                            onChange={e => setPartQuantity(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                      
                       <button 
                         type="button"
                         onClick={handleAddPartToJob}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm"
+                        className="w-full py-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg font-bold transition-colors text-sm"
                       >
-                        إضافة
+                        إضافة للقائمة
                       </button>
                     </div>
                   )}

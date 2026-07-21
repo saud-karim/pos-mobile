@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, FileText, Download, X } from 'lucide-react';
+import { TrendingUp, FileText, Download, X, Search } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getReportsStats, getRecentInvoices } from '../lib/reportsQueries';
 import { getTodayExpenses, Expense } from '../lib/expensesQueries';
@@ -18,6 +18,10 @@ export function Reports() {
   const [shiftsHistory, setShiftsHistory] = useState<(Shift & { user_name: string })[]>([]);
   const [selectedShiftDetails, setSelectedShiftDetails] = useState<any>(null);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [expenseSearch, setExpenseSearch] = useState('');
+  const [shiftSearch, setShiftSearch] = useState('');
   
   // Partial Return States
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -254,9 +258,21 @@ export function Reports() {
           <div className="max-w-4xl mx-auto py-8">
             {/* Shifts History Table */}
             <div>
-              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <FileText className="w-6 h-6 text-primary" /> سجل الورديات السابق
-              </h3>
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <FileText className="w-6 h-6 text-primary" /> سجل الورديات السابق
+                </h3>
+                <div className="relative w-full md:w-64">
+                  <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input 
+                    type="text"
+                    placeholder="بحث برقم الوردية أو الكاشير..."
+                    value={shiftSearch}
+                    onChange={(e) => setShiftSearch(e.target.value)}
+                    className="w-full pl-4 pr-10 py-2 border border-border rounded-xl bg-background outline-none focus:ring-2 focus:ring-primary text-sm"
+                  />
+                </div>
+              </div>
               <div className="overflow-x-auto bg-card rounded-2xl border border-border shadow-sm">
                 <table className="w-full text-right">
                   <thead>
@@ -273,8 +289,8 @@ export function Reports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {shiftsHistory.length === 0 && <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">لا يوجد ورديات مسجلة</td></tr>}
-                    {shiftsHistory.map(shift => (
+                    {shiftsHistory.filter(shift => shift.id.toString().includes(shiftSearch) || (shift.user_name && shift.user_name.toLowerCase().includes(shiftSearch.toLowerCase()))).length === 0 && <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">لا توجد نتائج</td></tr>}
+                    {shiftsHistory.filter(shift => shift.id.toString().includes(shiftSearch) || (shift.user_name && shift.user_name.toLowerCase().includes(shiftSearch.toLowerCase()))).map(shift => (
                       <tr key={shift.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                         <td className="py-3 px-4 font-bold">#{shift.id}</td>
                         <td className="py-3 px-4 text-sm font-bold text-foreground">{shift.user_name}</td>
@@ -306,7 +322,18 @@ export function Reports() {
         )}
 
         {activeTab === 'invoices' && (
-          <div className="overflow-x-auto">
+          <div className="space-y-4">
+            <div className="relative w-full md:w-80">
+              <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input 
+                type="text"
+                placeholder="بحث برقم الفاتورة أو الكاشير..."
+                value={invoiceSearch}
+                onChange={(e) => setInvoiceSearch(e.target.value)}
+                className="w-full pl-4 pr-10 py-2.5 border border-border rounded-xl bg-background outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+          <div className="overflow-x-auto border border-border rounded-2xl">
             <table className="w-full text-right">
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
@@ -319,8 +346,8 @@ export function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد فواتير</td></tr>}
-                {invoices.map(inv => (
+                {invoices.filter(inv => inv.id.toString().includes(invoiceSearch) || (inv.cashier_name && inv.cashier_name.toLowerCase().includes(invoiceSearch.toLowerCase()))).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">لا توجد نتائج</td></tr>}
+                {invoices.filter(inv => inv.id.toString().includes(invoiceSearch) || (inv.cashier_name && inv.cashier_name.toLowerCase().includes(invoiceSearch.toLowerCase()))).map(inv => (
                   <tr key={inv.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-4 font-black">#{inv.id}</td>
                     <td className="py-4 px-4 text-sm text-muted-foreground">{new Date(inv.created_at).toLocaleString('ar-EG')}</td>
@@ -348,10 +375,22 @@ export function Reports() {
               </tbody>
             </table>
           </div>
+          </div>
         )}
 
         {activeTab === 'expenses' && (
-          <div className="overflow-x-auto">
+          <div className="space-y-4">
+            <div className="relative w-full md:w-80">
+              <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input 
+                type="text"
+                placeholder="بحث برقم المصروف، الوصف أو المستخدم..."
+                value={expenseSearch}
+                onChange={(e) => setExpenseSearch(e.target.value)}
+                className="w-full pl-4 pr-10 py-2.5 border border-border rounded-xl bg-background outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+          <div className="overflow-x-auto border border-border rounded-2xl">
             <table className="w-full text-right">
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
@@ -364,8 +403,8 @@ export function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {expensesList.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد مصروفات مسجلة</td></tr>}
-                {expensesList.map(exp => (
+                {expensesList.filter(exp => exp.id?.toString().includes(expenseSearch) || exp.description.toLowerCase().includes(expenseSearch.toLowerCase()) || (exp.username && exp.username.toLowerCase().includes(expenseSearch.toLowerCase()))).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">لا توجد نتائج</td></tr>}
+                {expensesList.filter(exp => exp.id?.toString().includes(expenseSearch) || exp.description.toLowerCase().includes(expenseSearch.toLowerCase()) || (exp.username && exp.username.toLowerCase().includes(expenseSearch.toLowerCase()))).map(exp => (
                   <tr key={exp.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-4 font-black">#{exp.id}</td>
                     <td className="py-4 px-4 font-bold text-destructive">{exp.amount} ج.م</td>
@@ -379,6 +418,7 @@ export function Reports() {
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         )}
       </div>

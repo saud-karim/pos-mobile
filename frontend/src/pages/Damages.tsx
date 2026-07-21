@@ -16,6 +16,8 @@ export function Damages() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [inventory, setInventory] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [quantity, setQuantity] = useState<number | ''>('');
   const [reason, setReason] = useState('');
 
@@ -48,6 +50,8 @@ export function Damages() {
 
   const handleOpenAdd = () => {
     setSelectedProductId('');
+    setProductSearch('');
+    setShowProductDropdown(false);
     setQuantity('');
     setReason('');
     setShowAddModal(true);
@@ -166,18 +170,41 @@ export function Damages() {
             </h3>
             
             <div className="space-y-4 mb-6">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-bold mb-2">الصنف</label>
-                <select 
-                  value={selectedProductId}
-                  onChange={e => setSelectedProductId(e.target.value)}
+                <input 
+                  type="text"
+                  placeholder="ابحث عن الصنف التالف..."
+                  value={productSearch}
+                  onChange={e => {
+                    setProductSearch(e.target.value);
+                    setSelectedProductId(''); 
+                    setShowProductDropdown(true);
+                  }}
+                  onFocus={() => setShowProductDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
                   className="w-full px-4 py-3 bg-muted border border-border rounded-xl outline-none focus:ring-2 focus:ring-rose-500"
-                >
-                  <option value="">-- اختر الصنف --</option>
-                  {inventory.filter(i => i.quantity > 0).map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (المتاح: {p.quantity})</option>
-                  ))}
-                </select>
+                />
+                {showProductDropdown && (
+                  <div className="absolute top-full right-0 left-0 mt-1 bg-background border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                    {inventory.filter(p => p.quantity > 0 && p.name.toLowerCase().includes(productSearch.toLowerCase())).map(p => (
+                      <div 
+                        key={p.id} 
+                        onMouseDown={() => {
+                          setSelectedProductId(p.id.toString());
+                          setProductSearch(p.name);
+                          setShowProductDropdown(false);
+                        }}
+                        className="px-4 py-2 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0 font-medium"
+                      >
+                        {p.name} (المتاح: {p.quantity})
+                      </div>
+                    ))}
+                    {inventory.filter(p => p.quantity > 0 && p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-3 text-sm text-muted-foreground text-center">لا توجد نتائج</div>
+                    )}
+                  </div>
+                )}
               </div>
               
               <div>
