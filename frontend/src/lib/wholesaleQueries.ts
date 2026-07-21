@@ -149,12 +149,15 @@ export async function updateWholesaleProduct(id: number, product: { category: st
 
 export async function deleteWholesaleProduct(id: number) {
   const db = await getDb();
-  const invRes = await db.select<{count: number}[]>('SELECT COUNT(*) as count FROM invoice_items WHERE inventory_id = $1', [id]);
-  const whRes = await db.select<{count: number}[]>('SELECT COUNT(*) as count FROM wholesale_order_items WHERE inventory_id = $1', [id]);
-  if (invRes[0].count > 0 || whRes[0].count > 0) {
-    throw new Error('لا يمكن حذف الصنف لوجود فواتير مرتبطة به. يمكنك فقط تعديل الكمية إلى صفر.');
+  try {
+    return await db.execute('DELETE FROM inventory WHERE id = $1', [id]);
+  } catch (error: any) {
+    const errStr = typeof error === 'string' ? error : (error.message || String(error));
+    if (errStr.includes('FOREIGN KEY constraint failed') || errStr.includes('787')) {
+      throw new Error('لا يمكن حذف هذا الصنف لوجود عمليات مسجلة عليه (فواتير، صيانة، هوالك، أو جرد). يمكنك فقط تعديل الكمية إلى صفر.');
+    }
+    throw error;
   }
-  return await db.execute('DELETE FROM inventory WHERE id = $1', [id]);
 }
 
 // --- Orders Queries (Purchases & Sales) ---
