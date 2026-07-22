@@ -43,6 +43,12 @@ export async function initDb() {
     // Column exists
   }
 
+  try {
+    await db.execute('ALTER TABLE wholesale_order_items ADD COLUMN returned_quantity INTEGER DEFAULT 0');
+  } catch (e) {
+    // Column exists
+  }
+
   // Capitals (3 types: Goods, Transfers, Maintenance)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS capitals (
@@ -266,6 +272,18 @@ export async function initDb() {
 
   try {
     await db.execute('ALTER TABLE wholesale_orders ADD COLUMN discount REAL DEFAULT 0');
+  } catch (e) {
+    // Column exists
+  }
+
+  try {
+    await db.execute('ALTER TABLE wholesale_orders ADD COLUMN status TEXT DEFAULT "completed"'); // 'completed', 'returned'
+  } catch (e) {
+    // Column exists
+  }
+
+  try {
+    await db.execute('ALTER TABLE wholesale_order_items ADD COLUMN returned_quantity INTEGER DEFAULT 0');
   } catch (e) {
     // Column exists
   }

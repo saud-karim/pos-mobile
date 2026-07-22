@@ -266,6 +266,164 @@ export async function payWholesaleOrderDebt(orderId: number, merchantId: number,
   }
 }
 
+export async function returnWholesaleOrder(orderId: number, userId: number) {
+  const db = await getDb();
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    const orders = await db.select<any[]>('SELECT * FROM wholesale_orders WHERE id = $1', [orderId]);
+    const order = orders[0];
+    if (!order) throw new Error('الفاتورة غير موجودة');
+    if (order.status === 'returned') throw new Error('تم استرجاع هذه الفاتورة مسبقاً');
+
+    const items = await db.select<any[]>('SELECT * FROM wholesale_order_items WHERE order_id = $1', [orderId]);
+
+    // 1. Reverse Inventory
+    for (const item of items) {
+      const remainingQty = item.quantity - (item.returned_quantity || 0);
+      if (remainingQty > 0) {
+        const qtyChange = order.type === 'sale' ? remainingQty : -remainingQty;
+        await db.execute(
+          'UPDATE inventory SET quantity = quantity + $1 WHERE id = $2',
+          [qtyChange, item.inventory_id]
+        );
+      }
+    }
+
+    // 2. Reverse Merchant Balance
+    const unpaidAmount = (order.total_amount - (order.discount || 0)) - order.paid_amount;
+    if (unpaidAmount > 0) {
+      const reverseBalanceChange = order.type === 'sale' ? -unpaidAmount : unpaidAmount;
+      await db.execute(
+        'UPDATE wholesale_merchants SET balance = balance + $1 WHERE id = $2',
+        [reverseBalanceChange, order.merchant_id]
+      );
+    }
+
+    // 3. Reverse Capital
+    if (order.paid_amount > 0) {
+      const reverseCapitalChange = order.type === 'sale' ? -order.paid_amount : order.paid_amount;
+      await db.execute(
+        'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+        [reverseCapitalChange]
+      );
+
+      await db.execute(
+        'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, $3, $4)',
+        [userId, order.paid_amount, order.type === 'sale' ? 'withdrawal' : 'deposit', `استرجاع فاتورة ${order.type === 'sale' ? 'بيع' : 'شراء'} جملة رقم #${orderId}`]
+      );
+    }
+
+    // 4. Mark as returned
+    await db.execute('UPDATE wholesale_orders SET status = "returned" WHERE id = $1', [orderId]);
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function returnWholesaleOrderItem(orderId: number, itemId: number, quantityToReturn: number, userId: number) {
+  const db = await getDb();
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    const orders = await db.select<any[]>('SELECT * FROM wholesale_orders WHERE id = $1', [orderId]);
+    const order = orders[0];
+    if (!order) throw new Error('الفاتورة غير موجودة');
+    if (order.status === 'returned') throw new Error('الفاتورة مسترجعة بالكامل بالفعل');
+
+    const items = await db.select<any[]>('SELECT * FROM wholesale_order_items WHERE id = $1 AND order_id = $2', [itemId, orderId]);
+    const item = items[0];
+    if (!item) throw new Error('الصنف غير موجود في الفاتورة');
+
+    const availableToReturn = item.quantity - (item.returned_quantity || 0);
+    if (quantityToReturn <= 0 || quantityToReturn > availableToReturn) {
+      throw new Error('الكمية المراد استرجاعها غير صحيحة');
+    }
+
+    const returnAmount = quantityToReturn * item.unit_price;
+
+    // 1. Update Inventory
+    const qtyChange = order.type === 'sale' ? quantityToReturn : -quantityToReturn;
+    await db.execute(
+      'UPDATE inventory SET quantity = quantity + $1 WHERE id = $2',
+      [qtyChange, item.inventory_id]
+    );
+
+    // 2. Update Order Item
+    await db.execute(
+      'UPDATE wholesale_order_items SET returned_quantity = returned_quantity + $1 WHERE id = $2',
+      [quantityToReturn, itemId]
+    );
+
+    // 3. Update Order Total
+    await db.execute(
+      'UPDATE wholesale_orders SET total_amount = total_amount - $1 WHERE id = $2',
+      [returnAmount, orderId]
+    );
+
+    // 4. Reverse Merchant Balance & Capital (Refund)
+    const currentUnpaid = (order.total_amount - (order.discount || 0)) - order.paid_amount;
+    
+    let cashRefund = 0;
+    let debtReduction = 0;
+
+    if (currentUnpaid > 0) {
+      if (returnAmount <= currentUnpaid) {
+        debtReduction = returnAmount;
+      } else {
+        debtReduction = currentUnpaid;
+        cashRefund = returnAmount - currentUnpaid;
+      }
+    } else {
+      cashRefund = returnAmount;
+    }
+
+    if (debtReduction > 0) {
+      const reverseBalanceChange = order.type === 'sale' ? -debtReduction : debtReduction;
+      await db.execute(
+        'UPDATE wholesale_merchants SET balance = balance + $1 WHERE id = $2',
+        [reverseBalanceChange, order.merchant_id]
+      );
+    }
+
+    if (cashRefund > 0) {
+      // Refund cash from/to capital
+      const reverseCapitalChange = order.type === 'sale' ? -cashRefund : cashRefund;
+      await db.execute(
+        'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = 1',
+        [reverseCapitalChange]
+      );
+
+      // Reduce paid_amount on the order so it doesn't show overpaid
+      await db.execute(
+        'UPDATE wholesale_orders SET paid_amount = paid_amount - $1 WHERE id = $2',
+        [cashRefund, orderId]
+      );
+
+      await db.execute(
+        'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES (1, $1, $2, $3, $4)',
+        [userId, cashRefund, order.type === 'sale' ? 'withdrawal' : 'deposit', `استرجاع جزئي لصنف من فاتورة ${order.type === 'sale' ? 'بيع' : 'شراء'} جملة #${orderId}`]
+      );
+    }
+
+    // 5. Check if all items in order are fully returned
+    const remainingItems = await db.select<{total_remaining: number}[]>(
+      'SELECT SUM(quantity - returned_quantity) as total_remaining FROM wholesale_order_items WHERE order_id = $1', 
+      [orderId]
+    );
+    
+    if (remainingItems[0]?.total_remaining === 0) {
+      await db.execute('UPDATE wholesale_orders SET status = "returned" WHERE id = $1', [orderId]);
+    }
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
+}
+
 // --- Stats Queries ---
 export async function getWholesaleStats() {
   const db = await getDb();

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { FileSpreadsheet, Search, Eye, Trash2, ArrowUpRight, ArrowDownRight, HandCoins, CreditCard } from 'lucide-react';
+import { FileSpreadsheet, Search, Eye, Trash2, ArrowUpRight, ArrowDownRight, HandCoins, CreditCard, RotateCcw } from 'lucide-react';
 import { 
   getWholesaleOrders, 
   getWholesaleOrderItems, 
   createWholesaleOrder, 
   getWholesaleMerchants, 
   getWholesaleInventory,
-  payWholesaleOrderDebt
+  payWholesaleOrderDebt,
+  returnWholesaleOrder,
+  returnWholesaleOrderItem
 } from '../../lib/wholesaleQueries';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -50,6 +52,25 @@ export function WholesaleOrders() {
 
   const loadData = async () => {
     try {
+      await getWholesaleOrders().then(async () => {
+        const { getDb } = await import('../../lib/db');
+        const dbInstance = await getDb();
+        // 1. Fix overpaid invoices
+        await dbInstance.execute('UPDATE wholesale_orders SET paid_amount = (total_amount - COALESCE(discount, 0)) WHERE paid_amount > (total_amount - COALESCE(discount, 0))');
+        
+        // 2. Recalculate merchant balances
+        const merchants = await dbInstance.select<any[]>('SELECT id FROM wholesale_merchants');
+        for (const m of merchants) {
+          const orders = await dbInstance.select<any[]>('SELECT type, total_amount, discount, paid_amount FROM wholesale_orders WHERE merchant_id = $1 AND status != "returned"', [m.id]);
+          let correctBalance = 0;
+          for (const o of orders) {
+            const unpaid = (o.total_amount - (o.discount || 0)) - o.paid_amount;
+            if (o.type === 'sale') correctBalance += unpaid; // they owe us
+            else correctBalance -= unpaid; // we owe them
+          }
+          await dbInstance.execute('UPDATE wholesale_merchants SET balance = $1 WHERE id = $2', [correctBalance, m.id]);
+        }
+      });
       const data = await getWholesaleOrders();
       setOrders(data);
     } catch (error) {
@@ -186,6 +207,52 @@ export function WholesaleOrders() {
     }
   };
 
+  const handleReturnOrder = async (order: any) => {
+    if (!window.confirm(`هل أنت متأكد من استرجاع الفاتورة رقم #${order.id}؟ هذه العملية ستعكس المخزون وحسابات التاجر ولا يمكن التراجع عنها.`)) return;
+    try {
+      await returnWholesaleOrder(order.id, user!.id);
+      toast.success('تم استرجاع الفاتورة بنجاح');
+      loadData();
+      loadDependencies();
+    } catch (error: any) {
+      console.error(error);
+      toast.error('حدث خطأ أثناء الاسترجاع: ' + error.message);
+    }
+  };
+
+  const handlePartialReturn = async (item: any) => {
+    const maxQty = item.quantity - (item.returned_quantity || 0);
+    const qtyStr = window.prompt(`أدخل الكمية المراد استرجاعها من "${item.product_name}" (الحد الأقصى: ${maxQty}):`, "1");
+    if (!qtyStr) return;
+    
+    const qty = parseInt(qtyStr, 10);
+    if (isNaN(qty) || qty <= 0 || qty > maxQty) {
+      toast.error('الكمية المدخلة غير صحيحة');
+      return;
+    }
+
+    if (!window.confirm(`هل أنت متأكد من استرجاع عدد ${qty} من "${item.product_name}"؟ سيتم تسوية ديون التاجر بهذا المبلغ.`)) return;
+
+    try {
+      await returnWholesaleOrderItem(selectedOrder.id, item.id, qty, user!.id);
+      toast.success('تم الاسترجاع الجزئي بنجاح');
+      
+      const items = await getWholesaleOrderItems(selectedOrder.id);
+      setOrderItems(items);
+      loadData();
+      loadDependencies();
+      
+      setSelectedOrder((prev: any) => prev ? {
+        ...prev, 
+        total_amount: prev.total_amount - (qty * item.unit_price)
+      } : null);
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error('حدث خطأ: ' + (error.message || String(error)));
+    }
+  };
+
   const filteredOrders = orders.filter(o => 
     o.merchant_name.toLowerCase().includes(search.toLowerCase()) ||
     o.id.toString().includes(search)
@@ -256,9 +323,15 @@ export function WholesaleOrders() {
                       <td className="p-4 font-bold">#{order.id}</td>
                       <td className="p-4">{new Date(order.created_at).toLocaleString('ar-EG')}</td>
                       <td className="p-4">
-                        <span className={"px-2 py-1 rounded-md text-xs font-bold " + (order.type === 'sale' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600')}>
-                          {order.type === 'sale' ? 'بيع لمحلات' : 'شراء بضاعة'}
-                        </span>
+                        {order.status === 'returned' ? (
+                          <span className="px-2 py-1 rounded-md text-xs font-bold bg-slate-500/10 text-slate-500 line-through">
+                            مرتجع
+                          </span>
+                        ) : (
+                          <span className={"px-2 py-1 rounded-md text-xs font-bold " + (order.type === 'sale' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600')}>
+                            {order.type === 'sale' ? 'بيع لمحلات' : 'شراء بضاعة'}
+                          </span>
+                        )}
                       </td>
                       <td className="p-4 font-bold">{order.merchant_name}</td>
                       <td className="p-4 font-bold text-blue-600">{(order.total_amount - (order.discount || 0)).toLocaleString()} ج.م</td>
@@ -273,7 +346,18 @@ export function WholesaleOrders() {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {((order.total_amount - (order.discount || 0)) - order.paid_amount) > 0 && (
+                        
+                        {order.status !== 'returned' && (
+                          <button 
+                            onClick={() => handleReturnOrder(order)}
+                            className="p-2 text-rose-500 hover:text-white hover:bg-rose-600 transition-colors bg-rose-500/10 rounded-lg"
+                            title="استرجاع الفاتورة"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {order.status !== 'returned' && ((order.total_amount - (order.discount || 0)) - order.paid_amount) > 0 && (
                           <button 
                             onClick={() => {
                               setSelectedPaymentOrder(order);
@@ -319,15 +403,31 @@ export function WholesaleOrders() {
                     <th className="p-3">الكمية</th>
                     <th className="p-3">سعر الوحدة</th>
                     <th className="p-3">الإجمالي</th>
+                    <th className="p-3">إجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orderItems.map(item => (
                     <tr key={item.id} className="border-b border-border">
                       <td className="p-3 font-bold">{item.product_name}</td>
-                      <td className="p-3">{item.quantity}</td>
+                      <td className="p-3">
+                        {item.quantity}
+                        {item.returned_quantity > 0 && (
+                          <span className="text-rose-500 text-xs block font-bold mt-1">(مُسترجع: {item.returned_quantity})</span>
+                        )}
+                      </td>
                       <td className="p-3">{item.unit_price.toLocaleString()}</td>
                       <td className="p-3 font-bold">{(item.quantity * item.unit_price).toLocaleString()}</td>
+                      <td className="p-3 text-left">
+                        {selectedOrder.status !== 'returned' && item.quantity > (item.returned_quantity || 0) && (
+                          <button
+                            onClick={() => handlePartialReturn(item)}
+                            className="bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            استرجاع جزئي
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
