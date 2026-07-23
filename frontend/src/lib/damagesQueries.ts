@@ -25,16 +25,23 @@ export async function getDamages(page: number = 1, limit: number = 50) {
 
 export async function addDamage(inventoryId: number, userId: number, quantity: number, costPrice: number, reason: string) {
   const db = await getDb();
-  
-  // 1. Insert into damaged_goods
-  await db.execute(
-    'INSERT INTO damaged_goods (inventory_id, user_id, quantity, cost_price, reason) VALUES ($1, $2, $3, $4, $5)',
-    [inventoryId, userId, quantity, costPrice, reason]
-  );
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    // 1. Insert into damaged_goods
+    await db.execute(
+      'INSERT INTO damaged_goods (inventory_id, user_id, quantity, cost_price, reason) VALUES ($1, $2, $3, $4, $5)',
+      [inventoryId, userId, quantity, costPrice, reason]
+    );
 
-  // 2. Reduce inventory quantity
-  await db.execute(
-    'UPDATE inventory SET quantity = quantity - $1 WHERE id = $2',
-    [quantity, inventoryId]
-  );
+    // 2. Reduce inventory quantity
+    await db.execute(
+      'UPDATE inventory SET quantity = quantity - $1 WHERE id = $2',
+      [quantity, inventoryId]
+    );
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
 }

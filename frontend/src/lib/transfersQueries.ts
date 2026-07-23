@@ -11,28 +11,34 @@ export interface Transfer {
 
 export async function addTransfer(transfer: Transfer) {
   const db = await getDb();
-  
-  // Add to money_transfers
-  const result = await db.execute(
-    `INSERT INTO money_transfers (user_id, type, commission)
-     VALUES ($1, $2, $3)`,
-    [transfer.user_id, transfer.type, transfer.commission]
-  );
-  
-  // Add commission to Transfers Capital (Capital ID: 2)
-  await db.execute(
-    `UPDATE capitals SET balance = balance + $1 WHERE id = 2`,
-    [transfer.commission]
-  );
-  
-  // Optional: Record the transaction in capital_transactions
-  await db.execute(
-    `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) 
-     VALUES (2, $1, $2, 'deposit', $3)`,
-    [transfer.user_id, transfer.commission, `عمولة من ${transfer.type}`]
-  );
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    // Add to money_transfers
+    const result = await db.execute(
+      `INSERT INTO money_transfers (user_id, type, commission)
+       VALUES ($1, $2, $3)`,
+      [transfer.user_id, transfer.type, transfer.commission]
+    );
+    
+    // Add commission to Transfers Capital (Capital ID: 2)
+    await db.execute(
+      `UPDATE capitals SET balance = balance + $1 WHERE id = 2`,
+      [transfer.commission]
+    );
+    
+    // Optional: Record the transaction in capital_transactions
+    await db.execute(
+      `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) 
+       VALUES (2, $1, $2, 'deposit', $3)`,
+      [transfer.user_id, transfer.commission, `عمولة من ${transfer.type}`]
+    );
 
-  return result.lastInsertId;
+    await db.execute('COMMIT');
+    return result.lastInsertId;
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function getTransfers(startDate?: string, endDate?: string) {

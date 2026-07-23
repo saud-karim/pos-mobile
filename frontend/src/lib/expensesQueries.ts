@@ -14,18 +14,32 @@ export interface Expense {
 
 export async function addExpense(userId: number, capitalId: number, amount: number, description: string) {
   const db = await getDb();
-  
-  // Update capital balance (withdraw)
-  await db.execute(
-    `UPDATE capitals SET balance = balance - $1 WHERE id = $2`,
-    [amount, capitalId]
-  );
-  
-  // Record expense
-  await db.execute(
-    `INSERT INTO expenses (user_id, capital_id, amount, description) VALUES ($1, $2, $3, $4)`,
-    [userId, capitalId, amount, description]
-  );
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    // Update capital balance (withdraw)
+    await db.execute(
+      `UPDATE capitals SET balance = balance - $1 WHERE id = $2`,
+      [amount, capitalId]
+    );
+    
+    // Record expense
+    await db.execute(
+      `INSERT INTO expenses (user_id, capital_id, amount, description) VALUES ($1, $2, $3, $4)`,
+      [userId, capitalId, amount, description]
+    );
+
+    // Record capital transaction
+    await db.execute(
+      `INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) 
+       VALUES ($1, $2, $3, 'withdrawal', $4)`,
+      [capitalId, userId, amount, `مصروفات: ${description}`]
+    );
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function getTodayExpenses(startDate?: string, endDate?: string) {
