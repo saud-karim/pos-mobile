@@ -8,12 +8,19 @@ export async function getReportsStats() {
   today.setHours(0, 0, 0, 0);
   const startOfDay = today.toISOString().replace('T', ' ').substring(0, 19);
   
-  // Get total sales today (Invoices)
+  // Get total retail sales today
   const salesResult = await db.select<{total: number}[]>(
     `SELECT SUM(total_amount) as total FROM invoices WHERE created_at >= $1`,
     [startOfDay]
   );
   
+  // Get total wholesale sales today
+  const wholesaleSalesResult = await db.select<{total: number}[]>(
+    `SELECT SUM(total_amount) as total FROM wholesale_orders WHERE type = 'sale' AND created_at >= $1`,
+    [startOfDay]
+  );
+
+
   // Get maintenance profit today
   // Profit = final_cost - cost of all parts. Wait, in maintenance we have `spare_parts_cost` which is price, not cost.
   // Actually let's just show total maintenance income here to match dashboard or keep it as profit? 
@@ -32,6 +39,7 @@ export async function getReportsStats() {
 
   return {
     sales: salesResult[0]?.total || 0,
+    wholesale: wholesaleSalesResult[0]?.total || 0,
     maintenance: maintenanceResult[0]?.total || 0,
     transfers: transfersResult[0]?.total || 0,
   };
@@ -46,4 +54,46 @@ export async function getRecentInvoices(limit = 10) {
      ORDER BY i.created_at DESC LIMIT $1`,
     [limit]
   );
+}
+
+export async function getWeeklyChartData() {
+  const db = await getDb();
+  const data = [];
+  const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    date.setHours(0, 0, 0, 0);
+    const startOfDay = date.toISOString().replace('T', ' ').substring(0, 19);
+    
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+    const endOfDay = end.toISOString().replace('T', ' ').substring(0, 19);
+
+    const salesRes = await db.select<{total: number}[]>(
+      `SELECT SUM(total_amount) as total FROM invoices WHERE created_at >= $1 AND created_at <= $2`,
+      [startOfDay, endOfDay]
+    );
+
+    const wholesaleRes = await db.select<{total: number}[]>(
+      `SELECT SUM(total_amount) as total FROM wholesale_orders WHERE type = 'sale' AND created_at >= $1 AND created_at <= $2`,
+      [startOfDay, endOfDay]
+    );
+
+    const maintRes = await db.select<{total: number}[]>(
+      `SELECT SUM(final_cost - spare_parts_cost) as total FROM maintenance WHERE status = 'delivered' AND updated_at >= $1 AND updated_at <= $2`,
+      [startOfDay, endOfDay]
+    );
+
+    const dayName = i === 0 ? 'اليوم' : days[date.getDay()];
+
+    data.push({
+      name: dayName,
+      مبيعات: (salesRes[0]?.total || 0) + (wholesaleRes[0]?.total || 0),
+      صيانة: maintRes[0]?.total || 0,
+    });
+  }
+
+  return data;
 }

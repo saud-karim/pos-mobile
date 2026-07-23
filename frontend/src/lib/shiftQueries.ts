@@ -40,7 +40,7 @@ export async function calculateExpectedCash(shiftId: number, userId: number, ope
 
   // Sum cash sales for this user since openedAt
   const salesResult = await db.select<{total: number}[]>(
-    `SELECT SUM(paid_amount) as total FROM invoices 
+    `SELECT SUM(cash_collected_at_sale) as total FROM invoices 
      WHERE user_id = $1 AND payment_method = 'cash' AND created_at >= $2`,
     [userId, openedAt]
   );

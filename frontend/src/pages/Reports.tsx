@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, FileText, Download, X, Search } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getReportsStats, getRecentInvoices } from '../lib/reportsQueries';
+import { getReportsStats, getRecentInvoices, getWeeklyChartData } from '../lib/reportsQueries';
 import { getTodayExpenses, Expense } from '../lib/expensesQueries';
 import { Shift, getShiftsHistory, getShiftTransactions } from '../lib/shiftQueries';
 import { getAllCapitalTransactions } from '../lib/dashboardQueries';
@@ -13,13 +13,14 @@ import toast from 'react-hot-toast';
 export function Reports() {
   const user = useAuthStore(state => state.user);
   const [activeTab, setActiveTab] = useState('profits');
-  const [stats, setStats] = useState({ sales: 0, maintenance: 0, transfers: 0 });
+  const [stats, setStats] = useState({ sales: 0, wholesale: 0, maintenance: 0, transfers: 0 });
   const [invoices, setInvoices] = useState<any[]>([]);
   const [expensesList, setExpensesList] = useState<Expense[]>([]);
   const [shiftsHistory, setShiftsHistory] = useState<(Shift & { user_name: string })[]>([]);
   const [capitalTransactions, setCapitalTransactions] = useState<any[]>([]);
   const [selectedShiftDetails, setSelectedShiftDetails] = useState<any>(null);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [chartData, setChartData] = useState<any[]>([]);
   
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [expenseSearch, setExpenseSearch] = useState('');
@@ -34,6 +35,7 @@ export function Reports() {
 
   useEffect(() => {
     loadStats();
+    loadChartData();
 
     if (activeTab === 'invoices') {
       loadInvoices();
@@ -53,6 +55,15 @@ export function Reports() {
     try {
       const data = await getAllCapitalTransactions();
       setCapitalTransactions(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadChartData = async () => {
+    try {
+      const data = await getWeeklyChartData();
+      setChartData(data);
     } catch (err) {
       console.error(err);
     }
@@ -171,16 +182,6 @@ export function Reports() {
     }
   };
 
-  const chartData = [
-    { name: 'السبت', مبيعات: 4000, صيانة: 2400 },
-    { name: 'الأحد', مبيعات: 3000, صيانة: 1398 },
-    { name: 'الإثنين', مبيعات: 2000, صيانة: 9800 },
-    { name: 'الثلاثاء', مبيعات: 2780, صيانة: 3908 },
-    { name: 'الأربعاء', مبيعات: 1890, صيانة: 4800 },
-    { name: 'الخميس', مبيعات: 2390, صيانة: 3800 },
-    { name: 'الجمعة', مبيعات: stats.sales, صيانة: stats.maintenance },
-  ];
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -240,13 +241,17 @@ export function Reports() {
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm min-h-[500px]">
         {activeTab === 'profits' && (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="p-6 bg-muted/30 rounded-2xl border border-border text-center">
-                <p className="text-muted-foreground mb-2 font-medium">إجمالي مبيعات اليوم</p>
+                <p className="text-muted-foreground mb-2 font-medium">مبيعات قطاعي</p>
                 <p className="text-4xl font-black text-primary">{stats.sales} ج.م</p>
               </div>
               <div className="p-6 bg-muted/30 rounded-2xl border border-border text-center">
-                <p className="text-muted-foreground mb-2 font-medium">صافي أرباح الصيانة</p>
+                <p className="text-muted-foreground mb-2 font-medium">مبيعات جملة</p>
+                <p className="text-4xl font-black text-blue-600">{stats.wholesale} ج.م</p>
+              </div>
+              <div className="p-6 bg-muted/30 rounded-2xl border border-border text-center">
+                <p className="text-muted-foreground mb-2 font-medium">أرباح الصيانة</p>
                 <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400">{stats.maintenance} ج.م</p>
               </div>
               <div className="p-6 bg-muted/30 rounded-2xl border border-border text-center">
@@ -372,12 +377,13 @@ export function Reports() {
                   <th className="py-4 px-4 font-medium">الخصم</th>
                   <th className="py-4 px-4 font-medium">المدفوع</th>
                   <th className="py-4 px-4 font-medium">المتبقي</th>
+                  <th className="py-4 px-4 font-medium">الحالة</th>
                   <th className="py-4 px-4 font-medium">الكاشير</th>
                   <th className="py-4 px-4 font-medium text-center">إجراءات</th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.filter(inv => inv.id.toString().includes(invoiceSearch) || (inv.cashier_name && inv.cashier_name.toLowerCase().includes(invoiceSearch.toLowerCase()))).length === 0 && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">لا توجد نتائج</td></tr>}
+                {invoices.filter(inv => inv.id.toString().includes(invoiceSearch) || (inv.cashier_name && inv.cashier_name.toLowerCase().includes(invoiceSearch.toLowerCase()))).length === 0 && <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">لا توجد نتائج</td></tr>}
                 {invoices.filter(inv => inv.id.toString().includes(invoiceSearch) || (inv.cashier_name && inv.cashier_name.toLowerCase().includes(invoiceSearch.toLowerCase()))).map(inv => (
                   <tr key={inv.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-4 font-black">#{inv.id}</td>
@@ -386,6 +392,11 @@ export function Reports() {
                     <td className="py-4 px-4 text-destructive">{inv.discount > 0 ? `-${inv.discount}` : '0'} ج.م</td>
                     <td className="py-4 px-4 font-bold text-emerald-600">{inv.paid_amount} ج.م</td>
                     <td className="py-4 px-4 font-bold text-orange-600">{(inv.total_amount - inv.discount) - inv.paid_amount > 0 ? ((inv.total_amount - inv.discount) - inv.paid_amount) : '0'} ج.م</td>
+                    <td className="py-4 px-4 text-sm font-bold">
+                      {((inv.total_amount - inv.discount) - inv.paid_amount) <= 0 
+                        ? <span className="bg-emerald-500/10 text-emerald-600 px-3 py-1 rounded-md">مسددة بالكامل</span> 
+                        : <span className="bg-orange-500/10 text-orange-600 px-3 py-1 rounded-md">آجل</span>}
+                    </td>
                     <td className="py-4 px-4 text-sm">{inv.cashier_name}</td>
                     <td className="py-4 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">

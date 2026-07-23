@@ -35,9 +35,9 @@ export async function createInvoice(
     
     // Create Invoice
     const invoiceResult = await db.execute(
-      `INSERT INTO invoices (customer_id, user_id, total_amount, discount, paid_amount, payment_method)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [customerId, userId, totalAmount, discount, paidAmount, paymentMethod]
+      `INSERT INTO invoices (customer_id, user_id, total_amount, discount, paid_amount, cash_collected_at_sale, payment_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [customerId, userId, totalAmount, discount, paidAmount, paidAmount, paymentMethod]
     );
     
     const invoiceId = invoiceResult.lastInsertId;

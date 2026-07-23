@@ -158,16 +158,24 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
-      user_id INTEGER,
+      user_id INTEGER NOT NULL,
       total_amount REAL NOT NULL,
       discount REAL DEFAULT 0,
-      paid_amount REAL NOT NULL,
+      paid_amount REAL DEFAULT 0,
+      cash_collected_at_sale REAL DEFAULT 0,
       payment_method TEXT DEFAULT 'cash', -- cash, visa, wallet, credit
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (customer_id) REFERENCES customers (id),
       FOREIGN KEY (user_id) REFERENCES users (id)
     )
   `);
+
+  try {
+    await db.execute('ALTER TABLE invoices ADD COLUMN cash_collected_at_sale REAL DEFAULT 0');
+    await db.execute('UPDATE invoices SET cash_collected_at_sale = paid_amount WHERE cash_collected_at_sale = 0');
+  } catch (e) {
+    // Column exists
+  }
 
   // Invoice Items
   await db.execute(`
