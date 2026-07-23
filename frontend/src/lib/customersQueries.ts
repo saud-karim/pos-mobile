@@ -10,7 +10,7 @@ export interface Customer {
   created_at?: string;
 }
 
-export async function addCustomer(customer: Customer, userId: number) {
+export async function addCustomer(customer: Customer, _userId: number) {
   const db = await getDb();
   const capital_id = customer.capital_id || 1;
   const result = await db.execute(
