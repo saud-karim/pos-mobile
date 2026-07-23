@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { getReportsStats, getRecentInvoices } from '../lib/reportsQueries';
 import { getTodayExpenses, Expense } from '../lib/expensesQueries';
 import { Shift, getShiftsHistory, getShiftTransactions } from '../lib/shiftQueries';
+import { getAllCapitalTransactions } from '../lib/dashboardQueries';
 import { returnInvoice, getInvoiceItems, returnInvoiceItem } from '../lib/posQueries';
 import { useAuthStore } from '../store/authStore';
 import { exportToExcel } from '../lib/exportUtils';
@@ -16,12 +17,14 @@ export function Reports() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [expensesList, setExpensesList] = useState<Expense[]>([]);
   const [shiftsHistory, setShiftsHistory] = useState<(Shift & { user_name: string })[]>([]);
+  const [capitalTransactions, setCapitalTransactions] = useState<any[]>([]);
   const [selectedShiftDetails, setSelectedShiftDetails] = useState<any>(null);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [expenseSearch, setExpenseSearch] = useState('');
   const [shiftSearch, setShiftSearch] = useState('');
+  const [capitalSearch, setCapitalSearch] = useState('');
   
   // Partial Return States
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -41,7 +44,19 @@ export function Reports() {
     if (activeTab === 'expenses') {
       loadExpensesData();
     }
+    if (activeTab === 'capitals') {
+      loadCapitalTransactions();
+    }
   }, [activeTab]);
+
+  const loadCapitalTransactions = async () => {
+    try {
+      const data = await getAllCapitalTransactions();
+      setCapitalTransactions(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const loadInvoices = async () => {
     try {
@@ -199,13 +214,27 @@ export function Reports() {
         >
           <FileText className="w-4 h-4" /> الفواتير والمرتجعات
         </button>
-        <button 
-          onClick={() => setActiveTab('expenses')}
-          className={`pb-3 px-2 font-bold flex items-center gap-2 transition-colors ${activeTab === 'expenses' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <FileText className="w-4 h-4" /> سجل المصروفات
-        </button>
-      </div>
+          <button
+            onClick={() => setActiveTab('expenses')}
+            className={`px-4 py-2 font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'expenses' 
+                ? 'text-primary border-b-2 border-primary' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <FileText className="w-4 h-4" /> سجل المصروفات
+          </button>
+          <button
+            onClick={() => setActiveTab('capitals')}
+            className={`px-4 py-2 font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'capitals' 
+                ? 'text-primary border-b-2 border-primary' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <FileText className="w-4 h-4" /> سجل الخزنة
+          </button>
+        </div>
 
       {/* Content Area */}
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm min-h-[500px]">
@@ -379,6 +408,55 @@ export function Reports() {
               </tbody>
             </table>
           </div>
+          </div>
+        )}
+
+        {activeTab === 'capitals' && (
+          <div className="max-w-6xl mx-auto py-8">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+              <h3 className="text-xl font-bold text-foreground">سجل الخزنة (إيداع وسحب)</h3>
+              <div className="relative w-full md:w-64">
+                <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input 
+                  type="text"
+                  placeholder="بحث في السجل..."
+                  value={capitalSearch}
+                  onChange={(e) => setCapitalSearch(e.target.value)}
+                  className="w-full pl-4 pr-10 py-2.5 border border-border rounded-xl bg-background outline-none focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto border border-border rounded-2xl">
+              <table className="w-full text-right">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="py-4 px-4 font-medium">رقم العملية</th>
+                    <th className="py-4 px-4 font-medium">الوقت</th>
+                    <th className="py-4 px-4 font-medium">الخزنة</th>
+                    <th className="py-4 px-4 font-medium">المستخدم</th>
+                    <th className="py-4 px-4 font-medium">المبلغ</th>
+                    <th className="py-4 px-4 font-medium">النوع</th>
+                    <th className="py-4 px-4 font-medium">البيان</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {capitalTransactions.filter(t => t.description?.toLowerCase().includes(capitalSearch.toLowerCase()) || t.capital_name?.toLowerCase().includes(capitalSearch.toLowerCase())).length === 0 && <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">لا توجد نتائج</td></tr>}
+                  {capitalTransactions.filter(t => t.description?.toLowerCase().includes(capitalSearch.toLowerCase()) || t.capital_name?.toLowerCase().includes(capitalSearch.toLowerCase())).map(t => (
+                    <tr key={t.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                      <td className="py-4 px-4 font-bold">#{t.id}</td>
+                      <td className="py-4 px-4 text-sm text-muted-foreground">{new Date(t.created_at).toLocaleString('ar-EG')}</td>
+                      <td className="py-4 px-4 font-bold text-foreground">{t.capital_name}</td>
+                      <td className="py-4 px-4 text-sm">{t.user_name}</td>
+                      <td className="py-4 px-4 font-bold text-primary">{t.amount} ج.م</td>
+                      <td className="py-4 px-4 text-sm font-bold">
+                        {t.type === 'deposit' ? <span className="text-emerald-600">إيداع</span> : <span className="text-rose-600">سحب</span>}
+                      </td>
+                      <td className="py-4 px-4 text-sm">{t.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

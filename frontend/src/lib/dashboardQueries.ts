@@ -137,3 +137,39 @@ export async function getLowStockItems() {
      ORDER BY quantity ASC`
   );
 }
+
+export async function addManualCapitalTransaction(capitalId: number, userId: number, amount: number, type: 'deposit' | 'withdrawal', description: string) {
+  const db = await getDb();
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    const change = type === 'deposit' ? amount : -amount;
+    
+    // Update capital
+    await db.execute(
+      'UPDATE capitals SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [change, capitalId]
+    );
+
+    // Log transaction
+    await db.execute(
+      'INSERT INTO capital_transactions (capital_id, user_id, amount, type, description) VALUES ($1, $2, $3, $4, $5)',
+      [capitalId, userId, amount, type, description]
+    );
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function getAllCapitalTransactions() {
+  const db = await getDb();
+  return await db.select<any[]>(`
+    SELECT ct.*, c.name as capital_name, u.username as user_name
+    FROM capital_transactions ct
+    LEFT JOIN capitals c ON ct.capital_id = c.id
+    LEFT JOIN users u ON ct.user_id = u.id
+    ORDER BY ct.created_at DESC
+  `);
+}

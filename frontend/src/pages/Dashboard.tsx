@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote, Calendar, Wallet, PackageX, AlertTriangle } from 'lucide-react';
-import { getDashboardStats, getRecentInvoices, getReadyMaintenance, getLowStockItems, DashboardStats } from '../lib/dashboardQueries';
+import { Smartphone, Wrench, ArrowRightLeft, DollarSign, Loader2, Banknote, Calendar, Wallet, PackageX, AlertTriangle, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { getDashboardStats, getRecentInvoices, getReadyMaintenance, getLowStockItems, DashboardStats, addManualCapitalTransaction } from '../lib/dashboardQueries';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+import { useAuthStore } from '../store/authStore';
+
+const MySwal = withReactContent(Swal);
 
 export function Dashboard() {
   const [statsData, setStatsData] = useState<DashboardStats | null>(null);
@@ -9,53 +14,123 @@ export function Dashboard() {
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('today'); // default today
+  const { user } = useAuthStore();
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      let startDate: string | undefined = undefined;
+      let endDate: string | undefined = undefined;
+      
+      const end = new Date();
+      const start = new Date();
+
+      if (period !== 'all') {
+        if (period === 'today') {
+          start.setHours(0, 0, 0, 0);
+          end.setHours(23, 59, 59, 999);
+        } else if (period === 'week') {
+          start.setDate(start.getDate() - 7);
+        } else if (period === 'month') {
+          start.setMonth(start.getMonth() - 1);
+        } else if (period === '3month') {
+          start.setMonth(start.getMonth() - 3);
+        } else if (period === '6month') {
+          start.setMonth(start.getMonth() - 6);
+        } else if (period === 'year') {
+          start.setFullYear(start.getFullYear() - 1);
+        }
+        
+        startDate = start.toISOString().split('T')[0] + ' 00:00:00';
+        endDate = end.toISOString().split('T')[0] + ' 23:59:59';
+      }
+
+      const [stats, invoices, ready, lowStock] = await Promise.all([
+        getDashboardStats(startDate, endDate),
+        getRecentInvoices(),
+        getReadyMaintenance(),
+        getLowStockItems()
+      ]);
+
+      setStatsData(stats);
+      setRecentInvoices(invoices);
+      setReadyMaintenance(ready);
+      setLowStockItems(lowStock);
+    } catch (error) {
+      console.error('Failed to load dashboard data', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        let startDate: string | undefined = undefined;
-        let endDate: string | undefined = undefined;
-        
-        const end = new Date();
-        const start = new Date();
-
-        if (period !== 'all') {
-          if (period === 'today') {
-            start.setHours(0, 0, 0, 0);
-          } else if (period === 'week') {
-            start.setDate(start.getDate() - 7);
-          } else if (period === 'month') {
-            start.setMonth(start.getMonth() - 1);
-          } else if (period === '3month') {
-            start.setMonth(start.getMonth() - 3);
-          } else if (period === '6month') {
-            start.setMonth(start.getMonth() - 6);
-          } else if (period === 'year') {
-            start.setFullYear(start.getFullYear() - 1);
-          }
-          
-          startDate = start.toISOString().replace('T', ' ').substring(0, 19);
-          endDate = end.toISOString().replace('T', ' ').substring(0, 19);
-        }
-
-        const stats = await getDashboardStats(startDate, endDate);
-        const invoices = await getRecentInvoices();
-        const maintenance = await getReadyMaintenance();
-        const lowStock = await getLowStockItems();
-
-        setStatsData(stats);
-        setRecentInvoices(invoices);
-        setReadyMaintenance(maintenance);
-        setLowStockItems(lowStock);
-      } catch (error) {
-        console.error("Failed to load dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, [period]);
+
+  const handleCapitalTransaction = async (capitalId: number, type: 'deposit' | 'withdrawal', capitalName: string) => {
+    if (!user) return;
+    
+    const isDeposit = type === 'deposit';
+    const actionName = isDeposit ? 'إيداع سيولة' : 'سحب سيولة';
+
+    const { value: formValues } = await MySwal.fire({
+      title: `${actionName} - ${capitalName}`,
+      html: `
+        <div class="flex flex-col gap-4">
+          <div>
+            <label class="block text-right mb-1 text-sm font-bold text-slate-700">المبلغ (ج.م)</label>
+            <input id="swal-amount" type="number" step="0.01" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl outline-none focus:border-primary text-left" placeholder="0.00" />
+          </div>
+          <div>
+            <label class="block text-right mb-1 text-sm font-bold text-slate-700">البيان / السبب</label>
+            <input id="swal-desc" type="text" class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl outline-none focus:border-primary text-right" placeholder="${isDeposit ? 'رأس مال افتتاحي' : 'سحب أرباح'}" />
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'تأكيد',
+      cancelButtonText: 'إلغاء',
+      customClass: {
+        confirmButton: 'bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-bold',
+        cancelButton: 'bg-slate-100 text-slate-700 px-6 py-2.5 rounded-xl font-bold mr-3'
+      },
+      buttonsStyling: false,
+      preConfirm: () => {
+        const amount = (document.getElementById('swal-amount') as HTMLInputElement).value;
+        const desc = (document.getElementById('swal-desc') as HTMLInputElement).value;
+        if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+          Swal.showValidationMessage('الرجاء إدخال مبلغ صحيح أكبر من الصفر');
+          return false;
+        }
+        if (!desc.trim()) {
+          Swal.showValidationMessage('الرجاء كتابة البيان');
+          return false;
+        }
+        return { amount: Number(amount), description: desc.trim() };
+      }
+    });
+
+    if (formValues) {
+      try {
+        await addManualCapitalTransaction(capitalId, user.id, formValues.amount, type, formValues.description);
+        await loadData();
+        MySwal.fire({
+          icon: 'success',
+          title: 'تم بنجاح',
+          text: `تم ${isDeposit ? 'إيداع' : 'سحب'} المبلغ بنجاح.`,
+          confirmButtonText: 'حسناً'
+        });
+      } catch (error: any) {
+        MySwal.fire({
+          icon: 'error',
+          title: 'خطأ',
+          text: error.message || 'حدث خطأ أثناء تنفيذ العملية',
+          confirmButtonText: 'حسناً'
+        });
+      }
+    }
+  };
 
   const stats = [
     { title: 'المبيعات', value: `${statsData?.periodSales || 0} ج.م`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
@@ -124,6 +199,14 @@ export function Dashboard() {
                 </div>
                 <h3 className="text-lg font-bold text-muted-foreground mb-2">{capital.name}</h3>
                 <p className="text-3xl font-black text-foreground">{capital.balance} ج.م</p>
+                <div className="flex gap-2 mt-4 w-full">
+                  <button onClick={() => handleCapitalTransaction(capital.id, 'deposit', capital.name)} className="flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1 transition-colors">
+                    <ArrowDownToLine className="w-4 h-4" /> إيداع
+                  </button>
+                  <button onClick={() => handleCapitalTransaction(capital.id, 'withdrawal', capital.name)} className="flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1 transition-colors">
+                    <ArrowUpFromLine className="w-4 h-4" /> سحب
+                  </button>
+                </div>
               </div>
             ))}
           </div>
