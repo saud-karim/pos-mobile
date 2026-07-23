@@ -19,16 +19,7 @@ export async function addCustomer(customer: Customer, userId: number) {
     [customer.name, customer.phone || null, customer.national_id || null, customer.credit_balance || 0, capital_id]
   );
 
-  if (customer.credit_balance && customer.credit_balance > 0) {
-    await db.execute(
-      `UPDATE capitals SET balance = balance - $1 WHERE id = $2`,
-      [customer.credit_balance, capital_id]
-    );
-    await db.execute(
-      `INSERT INTO capital_transactions (capital_id, user_id, type, amount, description) VALUES ($1, $2, 'withdrawal', $3, $4)`,
-      [capital_id, userId, customer.credit_balance, `مديونية افتتاحية للعميل ${customer.name}`]
-    );
-  }
+  // Removed capital withdrawal for opening balance. It is just an opening debt.
 
   return result.lastInsertId;
 }
@@ -66,27 +57,61 @@ export async function updateCustomerBalance(customerId: number, amountChange: nu
 // Add a payment record
 export async function addCustomerPayment(customerId: number, userId: number, amount: number, customerName: string) {
   const db = await getDb();
-  const custRes = await db.select<{capital_id: number}[]>('SELECT capital_id FROM customers WHERE id = $1', [customerId]);
-  const capitalId = custRes.length > 0 ? custRes[0].capital_id || 1 : 1;
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    const custRes = await db.select<{capital_id: number}[]>('SELECT capital_id FROM customers WHERE id = $1', [customerId]);
+    const capitalId = custRes.length > 0 ? custRes[0].capital_id || 1 : 1;
 
-  // Update customer balance (decrease debt)
-  await updateCustomerBalance(customerId, -amount);
-  
-  // Log payment
-  await db.execute(
-    `INSERT INTO customer_payments (customer_id, user_id, amount) VALUES ($1, $2, $3)`,
-    [customerId, userId, amount]
-  );
+    // Update customer balance (decrease debt)
+    await db.execute(
+      `UPDATE customers SET credit_balance = credit_balance - $1 WHERE id = $2`,
+      [amount, customerId]
+    );
+    
+    // Log payment
+    await db.execute(
+      `INSERT INTO customer_payments (customer_id, user_id, amount) VALUES ($1, $2, $3)`,
+      [customerId, userId, amount]
+    );
 
-  // Deposit to capital
-  await db.execute(
-    `UPDATE capitals SET balance = balance + $1 WHERE id = $2`,
-    [amount, capitalId]
-  );
-  await db.execute(
-    `INSERT INTO capital_transactions (capital_id, user_id, type, amount, description) VALUES ($1, $2, 'deposit', $3, $4)`,
-    [capitalId, userId, amount, `تسديد دفعة من العميل ${customerName}`]
-  );
+    // Deposit to capital
+    await db.execute(
+      `UPDATE capitals SET balance = balance + $1 WHERE id = $2`,
+      [amount, capitalId]
+    );
+    await db.execute(
+      `INSERT INTO capital_transactions (capital_id, user_id, type, amount, description) VALUES ($1, $2, 'deposit', $3, $4)`,
+      [capitalId, userId, amount, `تسديد دفعة من العميل ${customerName}`]
+    );
+
+    // Distribute payment to unpaid retail invoices
+    const unpaidInvoices = await db.select<any[]>(`
+      SELECT id, total_amount, discount, paid_amount 
+      FROM invoices 
+      WHERE customer_id = $1 AND paid_amount < (total_amount - COALESCE(discount, 0))
+      ORDER BY created_at ASC
+    `, [customerId]);
+
+    let remainingPayment = amount;
+    for (const invoice of unpaidInvoices) {
+      if (remainingPayment <= 0) break;
+      
+      const unpaidAmount = (invoice.total_amount - (invoice.discount || 0)) - invoice.paid_amount;
+      if (unpaidAmount > 0) {
+        const amountToApply = Math.min(unpaidAmount, remainingPayment);
+        await db.execute(
+          'UPDATE invoices SET paid_amount = paid_amount + $1 WHERE id = $2',
+          [amountToApply, invoice.id]
+        );
+        remainingPayment -= amountToApply;
+      }
+    }
+
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function increaseCustomerDebt(customerId: number, userId: number, amount: number, customerName: string) {

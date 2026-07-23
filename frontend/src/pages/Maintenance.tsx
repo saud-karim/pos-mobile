@@ -597,13 +597,15 @@ export function Maintenance() {
                     >
                       <Wrench className="w-4 h-4" />
                     </button>
-                    <button 
-                      onClick={() => handleDeleteJob(job)}
-                      className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-lg transition-colors"
-                      title="حذف الجهاز"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {job.status !== 'delivered' && (
+                      <button 
+                        onClick={() => handleDeleteJob(job)}
+                        className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-lg transition-colors"
+                        title="حذف الجهاز"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

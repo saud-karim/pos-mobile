@@ -103,6 +103,31 @@ export async function addMerchantPayment(merchantId: number, userId: number, amo
       [userId, amount, paymentType === 'receive' ? 'deposit' : 'withdrawal', paymentType === 'receive' ? `تحصيل دفعة من ديون التاجر #${merchantId}` : `تسديد دفعة لمديونية التاجر #${merchantId}`]
     );
 
+    // Distribute payment to unpaid orders automatically
+    const orderTypeToPay = paymentType === 'receive' ? 'sale' : 'purchase';
+    
+    const unpaidOrders = await db.select<any[]>(`
+      SELECT id, total_amount, discount, paid_amount 
+      FROM wholesale_orders 
+      WHERE merchant_id = $1 AND type = $2 AND status != 'returned' AND paid_amount < (total_amount - COALESCE(discount, 0))
+      ORDER BY created_at ASC
+    `, [merchantId, orderTypeToPay]);
+
+    let remainingPayment = amount;
+    for (const order of unpaidOrders) {
+      if (remainingPayment <= 0) break;
+      
+      const unpaidAmount = (order.total_amount - (order.discount || 0)) - order.paid_amount;
+      if (unpaidAmount > 0) {
+        const amountToApply = Math.min(unpaidAmount, remainingPayment);
+        await db.execute(
+          'UPDATE wholesale_orders SET paid_amount = paid_amount + $1 WHERE id = $2',
+          [amountToApply, order.id]
+        );
+        remainingPayment -= amountToApply;
+      }
+    }
+
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');

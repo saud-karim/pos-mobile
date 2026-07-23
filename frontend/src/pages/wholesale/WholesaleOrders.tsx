@@ -52,25 +52,6 @@ export function WholesaleOrders() {
 
   const loadData = async () => {
     try {
-      await getWholesaleOrders().then(async () => {
-        const { getDb } = await import('../../lib/db');
-        const dbInstance = await getDb();
-        // 1. Fix overpaid invoices
-        await dbInstance.execute('UPDATE wholesale_orders SET paid_amount = (total_amount - COALESCE(discount, 0)) WHERE paid_amount > (total_amount - COALESCE(discount, 0))');
-        
-        // 2. Recalculate merchant balances
-        const merchants = await dbInstance.select<any[]>('SELECT id FROM wholesale_merchants');
-        for (const m of merchants) {
-          const orders = await dbInstance.select<any[]>('SELECT type, total_amount, discount, paid_amount FROM wholesale_orders WHERE merchant_id = $1 AND status != "returned"', [m.id]);
-          let correctBalance = 0;
-          for (const o of orders) {
-            const unpaid = (o.total_amount - (o.discount || 0)) - o.paid_amount;
-            if (o.type === 'sale') correctBalance += unpaid; // they owe us
-            else correctBalance -= unpaid; // we owe them
-          }
-          await dbInstance.execute('UPDATE wholesale_merchants SET balance = $1 WHERE id = $2', [correctBalance, m.id]);
-        }
-      });
       const data = await getWholesaleOrders();
       setOrders(data);
     } catch (error) {

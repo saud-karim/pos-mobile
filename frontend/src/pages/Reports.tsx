@@ -341,6 +341,8 @@ export function Reports() {
                   <th className="py-4 px-4 font-medium">الوقت</th>
                   <th className="py-4 px-4 font-medium">الإجمالي</th>
                   <th className="py-4 px-4 font-medium">الخصم</th>
+                  <th className="py-4 px-4 font-medium">المدفوع</th>
+                  <th className="py-4 px-4 font-medium">المتبقي</th>
                   <th className="py-4 px-4 font-medium">الكاشير</th>
                   <th className="py-4 px-4 font-medium text-center">إجراءات</th>
                 </tr>
@@ -353,6 +355,8 @@ export function Reports() {
                     <td className="py-4 px-4 text-sm text-muted-foreground">{new Date(inv.created_at).toLocaleString('ar-EG')}</td>
                     <td className="py-4 px-4 font-bold text-primary">{inv.total_amount} ج.م</td>
                     <td className="py-4 px-4 text-destructive">{inv.discount > 0 ? `-${inv.discount}` : '0'} ج.م</td>
+                    <td className="py-4 px-4 font-bold text-emerald-600">{inv.paid_amount} ج.م</td>
+                    <td className="py-4 px-4 font-bold text-orange-600">{(inv.total_amount - inv.discount) - inv.paid_amount > 0 ? ((inv.total_amount - inv.discount) - inv.paid_amount) : '0'} ج.م</td>
                     <td className="py-4 px-4 text-sm">{inv.cashier_name}</td>
                     <td className="py-4 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
